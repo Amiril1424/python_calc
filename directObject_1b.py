@@ -98,7 +98,16 @@ class PoleObject(LoadGeneralObject):
         length = self.get_length(z_ref)
         weight_po = BasicFunction.Pole_WeightKg_Straight(self.diameter, self.thickness,length)
         return  weight_po
-
+    
+    #Calculate Length center of pole
+    def get_center_height(self, z_ref=None):
+        if self.z_height <= z_ref:
+            return 0
+        
+        length = self.get_length(z_ref)
+        center_point = round(length / 2, 3)
+        z_center = round(z_ref + center_point, 3)
+        return z_center
         
 #Class to get center length of pole for Moment calculation
 #This class handling is like cntcs in VBA
@@ -139,30 +148,49 @@ class GetPoleCenterLengthAssembly:
         lengths = self.get_current_pole_lengths(z_ref)
 
         result = []
+        total_below = 0
 
-        # lp = [length for _, length in lengths]
-        lp = [length for _, length in lengths]
-        
-        n = len(lp)
+        # penting: dari bawah ke atas
+        for p, length in lengths:
 
-        for i in range(n):
-            if lp[i] >0:
-                """
-                i = pole saat ini
-                i+1: = semua setelahnya (di bawah)
-                sum(lp[i+1:]) --> jumlah pole length setelah i
-                """
-                sum_below = sum(lp[i+1:])
-                center = (lp[i]/2) + sum_below
+            if length > 0:
+                center =  (length / 2) + z_ref
+                # total_below += length
             else:
                 center = 0
-            """
-            lengths[i][0] --> Take first element from tuple
-            (Pole1, 3) → Pole1
-            """
-            result.append((lengths[i][0], center))
+
+            result.append((p, center))
 
         return result
+
+
+
+
+
+
+
+
+
+
+
+    # def get_center_heights(self, z_ref):
+    #     """
+    #     Calculate center height relatif with evaluated height:
+    #     length acumulation pole in bottom of evaluated height + center point
+    #     """
+    #     result = []
+    #     total_below_section = 0
+
+    #     for pole, length in self.get_current_pole_lengths(z_ref):
+    #         if length > 0:
+    #             center = total_below_section + (length / 2)
+    #             result.append((pole, center))
+    #             total_below_section += length
+    #         else:
+    #             result.append((pole, 0))
+        
+    #     return result
+
 
 
 #Calculate total Load per section
@@ -194,15 +222,15 @@ DO1 = DirectObject("Lighting", 0.2, 0.1, 1, 10, 8)
 DO2 = DirectObject("Box", 0.3, 0.15, 1.2, 15, 5)
 
 #Create Object for Pole
-Pole1 = PoleObject("Pole1", 165.2, 4.5, 14.84)
-Pole2 = PoleObject("Pole2", 190.7, 5.3, 9.69)
-Pole3 = PoleObject("Pole3", 216.3, 4.5, 4)
+Pole1 = PoleObject("Pole1", 165.2, 4.5, 9)
+Pole2 = PoleObject("Pole2", 190.7, 5.3, 6)
+Pole3 = PoleObject("Pole3", 216.3, 4.5, 3)
 
 
 #Create List of object
 objects = [
-    DO1,
-    DO2,
+    # DO1,
+    # DO2,
     Pole1,
     Pole2,
     Pole3
@@ -210,8 +238,8 @@ objects = [
 
 #Section Height input
 sections = {
-    "section_1": 9.69,
-    "section_2": 4,
+    "section_1": 6,
+    "section_2": 3,
     "section_3": 0,
 }
 
@@ -224,10 +252,8 @@ for name, h in sections.items():
 
     centers = assembly.get_center_heights(h)
 
-    # print(centers)
-
     for pole, center in centers:
-        print(f"    {pole.name} center height pole: {center:.3f} m")
+        print(f"    {pole.name} center height pole: {center:.2f} m")
 
 
 
