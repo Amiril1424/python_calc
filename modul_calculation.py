@@ -1,5 +1,8 @@
 #Import basic function from BasicFunction modul
 import BasicFunction
+from BasicFunction import PI
+from modul_object import PoleObject
+from modul_object import DirectObject
 
 class GetPoleAssembly:
     def __init__(self, poles):
@@ -55,48 +58,6 @@ class GetPoleAssembly:
 
         return result
 
-###Class Object for Calculation for Load Calculation
-#Class as Parent Class which contain general property (windload and moment)
-class LoadObject:
-    q_wp = 2214
-    gravity = 9.80665
-
-    def __init__(self, name, cf, weight):
-        self.name = name
-        self.cf = cf
-        self.weight = weight
-
-    def calc_windload(self, area):
-        windload = area * self.cf * self.q_wp
-        return windload
-
-    def calc_moment(self, load, center):
-        moment = load * center
-        return moment
-
-#Child Class 1 (Inheritance from Object General --> for Direct Object)
-class DirectObject(LoadObject):
-    def __init__(self, name, area, cf, weight, z_height):
-        super().__init__(name, cf, weight)
-        self.area = area
-        self.z_height = z_height
-
-    def get_area(self, z_ref=None):
-        return self.area
-    
-#Child Class 2 (Inheritance from Object General --> for Pole as Object)
-class PoleObject(LoadObject):
-    def __init__(self, name, diameter, thickness, material, z_height):
-        super().__init__(name, cf=0.7, weight=0)
-        self.diameter = diameter
-        self.thickness = thickness
-        self.material = material
-        self.z_height = z_height
-
-    def get_area(self, length):
-        area = self.diameter / 1000 * length
-        return area
-    
 
 class CalcLoadPerSection:
     def __init__(self, objects):
@@ -162,12 +123,59 @@ class CalcLoadPerSection:
             "total_windload": total_windload,
             "total_moment": total_moment
         }
-
-
-
-
-
     
+    # Calculate Bending Stress (Be)
+    def bending_stress(self, z_ref):
+        """Bending Stress = Total Moment/ Section Modulus"""
+        total = self.get_total_load(z_ref)
+        total_moment = total["total_moment"]
 
+        #Get active pole which need to calculate the bending stress and get section modulus
+        active_poles = [
+            obj for obj in self.objects
+            if isinstance(obj, PoleObject) and obj.z_height > z_ref
+        ]
+            
+        # If no active pole, tidak ada pole yang dievaluasi
+        if not active_poles:
+            return 0
+        
+        # pole paling bawah yang masih aktif
+        critical_pole = min(active_poles, key=lambda p: p.z_height)
 
+         # ambil section modulus dari child class PoleObject
+        sect_mod = critical_pole.get_sect_mod()
+
+        # convert Nm --> Nmm
+        bending_stress = (total_moment) / sect_mod
+
+        return bending_stress
     
+    # Calculate Safety Factor
+    def safety_factor(self, z_ref):
+        """Safety Factor = Bending Stress / Allowable (SFB)"""
+        stress = self.bending_stress(z_ref)
+
+         #Get active pole which need to calculate the bending stress and get section modulus
+        active_poles = [
+            obj for obj in self.objects
+            if isinstance(obj, PoleObject) and obj.z_height > z_ref
+        ]
+            
+        # If no active pole, tidak ada pole yang dievaluasi
+        if not active_poles:
+            return 0
+        
+        # pole paling bawah yang masih aktif
+        critical_pole = min(active_poles, key=lambda p: p.z_height)
+
+        # Get Material Pole
+        material = BasicFunction.PoleMaterialClass(critical_pole.material)
+        
+        # allowable stress
+        sfb = material.get("SFB")
+
+        # Safety ratio
+        sf = round(stress/sfb, 3)
+
+        return sf

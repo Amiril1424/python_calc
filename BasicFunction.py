@@ -1,6 +1,10 @@
 PI = 3.14159265358979  ##Declare nilai Phi sebagai nilai constan
 DENSITY = 7850
 
+# Coefision of Seismic for New JIL
+EQa = 4.71
+EQr = 1
+
 #Function to calculate nnC of Pole
 def nnC_P(LengthP:float, DiameterP: float) -> float:
     HperB = round(LengthP / DiameterP/1000, 2)
