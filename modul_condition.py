@@ -162,19 +162,28 @@ def wind_pressure(d_st, adc=None, hstr=None, z=None, vo=None):
     # Standard 2 & 3
     elif d_st in [2, 3]:
         ds_air = 1.23
-        vo = 60
+
+        if vo is None:
+            vo = 60
+
         q_wpr = round(0.5 * ds_air * (vo ** 2), 4)
 
     # Standard 4
     elif d_st == 4:
         ds_air = 1.23
-        vo = 40
+
+        if vo is None:
+            vo = 40
+
         q_wpr = round(0.5 * ds_air * (vo ** 2), 3)
 
     # Standard 5
     elif d_st == 5:
         ds_air = 1.23
-        vo = 50
+
+        if vo is None:
+            vo = 50
+
         q_wpr = round(0.5 * ds_air * (vo ** 2), 3)
 
     # Tower Standard
@@ -192,3 +201,70 @@ def wind_pressure(d_st, adc=None, hstr=None, z=None, vo=None):
         raise ValueError("Standard is not recognized")
 
     return q_wpr
+
+# Function for seismic condition
+def seismic_condition(position: str, k_value=None, seismic_class=None):
+    """
+    Determine the seismic K value based on the position of the pole.
+
+    Parameters
+    ----------
+    position : str
+        Pole position: ``"Ground"`` or ``"Rooftop"``.
+    k_value : float, optional
+        K value entered by the user. This is required only for a pole at
+        ground position.
+    seismic_class : str, optional
+        Rooftop seismic class: ``"A"``, ``"B"``, or ``"S"``.
+
+    Returns
+    -------
+    dict
+        Pole position, seismic class, and its K value.
+    """
+    if not isinstance(position, str):
+        raise ValueError("Position of pole must be 'Ground' or 'Rooftop'")
+
+    normalized_position = position.strip().lower()
+
+    if normalized_position == "ground":
+        if k_value is None:
+            raise ValueError("K value is required for a pole at ground position")
+
+        try:
+            selected_k_value = float(k_value)
+        except (TypeError, ValueError):
+            raise ValueError("K value must be a number") from None
+
+        if selected_k_value <= 0:
+            raise ValueError("K value must be greater than zero")
+
+        return {
+            "position": "Ground",
+            "seismic_class": None,
+            "K_value": selected_k_value,
+        }
+
+    if normalized_position == "rooftop":
+        if not isinstance(seismic_class, str):
+            raise ValueError(
+                "Seismic class A, B, or S is required for a pole at rooftop"
+            )
+
+        normalized_class = seismic_class.strip().upper()
+        rooftop_k_values = {
+            "A": 1.5,
+            "B": 1.0,
+            "S": 2.0,
+        }
+
+        if normalized_class not in rooftop_k_values:
+            raise ValueError("Seismic class must be A, B, or S")
+
+        return {
+            "position": "Rooftop",
+            "seismic_class": normalized_class,
+            "K_value": rooftop_k_values[normalized_class],
+        }
+
+    raise ValueError("Position of pole must be 'Ground' or 'Rooftop'")

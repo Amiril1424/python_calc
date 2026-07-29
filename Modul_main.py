@@ -1,5 +1,5 @@
 import BasicFunction
-from modul_condition import standard_act_cond, wind_pressure
+from modul_condition import standard_act_cond, wind_pressure, seismic_condition
 from modul_object import PoleObject, DirectObject, OhwObject
 from modul_calculation import CalcLoadPerSection
 # 
@@ -16,6 +16,16 @@ q_wp = wind_pressure(
     hstr=hstr,
     vo=vo
 )
+
+seismic_factor = seismic_condition(
+    position="ground",
+    k_value=0.5
+)
+
+# seismic_factor = seismic_condition(
+#     position="Rooftop",
+#     seismic_class="B"
+# )
 
 # Object data
 #Create a object for Direct Object

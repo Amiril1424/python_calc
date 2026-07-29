@@ -25,6 +25,10 @@ class LoadObject:
         windload = area * self.cf * self.q_wp
         return windload
 
+    def calc_seismicload(self, weight, k_factor=0.5):
+        seismicload = weight * self.gravity * k_factor
+        return seismicload
+
     def calc_moment(self, load, center):
         moment = load * center
         return moment
