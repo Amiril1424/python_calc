@@ -5,10 +5,16 @@ from modul_calculation import CalcLoadPerSection
 # 
 # --------Execution with dummy data input---------
 # Condition data
-d_st = 1
+d_st = 3
 adc = 2
 hstr = 14.84
 vo = 60
+
+condition = standard_act_cond(
+    d_st=d_st,
+    adc=adc,
+    hstr=hstr,
+)
 
 q_wp = wind_pressure(
     d_st=d_st,
@@ -41,37 +47,6 @@ Pole3 = PoleObject("Pole3", 216.3, 7,"STK540", 4, q_wp)
 HW1 = OhwObject("OHW1", 0.125, 10, 10, 3, 1, 0, 0, 7, q_wp)
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 #Create List of object
 objects = [
     DO1,
@@ -89,7 +64,10 @@ h_eval = {
 }
 
 # Create object to utilize the windload
-windload_calc = CalcLoadPerSection(objects)
+windload_calc = CalcLoadPerSection(
+    objects=objects,
+    condition=condition,
+)
 
 # 
 for name, h in h_eval.items():

@@ -60,8 +60,9 @@ class GetPoleAssembly:
 
 
 class CalcLoadPerSection:
-    def __init__(self, objects):
+    def __init__(self, objects, condition):
         self.objects = objects
+        self.condition = condition
         self.assembly = GetPoleAssembly(
             [obj for obj in objects if isinstance(obj, PoleObject)]
         ) # Only pole should be calculate the assembly to calculate center Height
@@ -86,6 +87,8 @@ class CalcLoadPerSection:
         pole_centers = dict(centers)
 
         for obj in self.objects:
+            length = None
+            
             # Pole as object
             if isinstance(obj, PoleObject):
                 length = pole_lengths.get(obj, 0)
@@ -100,8 +103,13 @@ class CalcLoadPerSection:
 
                 area = obj.get_area()
                 center = obj.z_height - z_ref
-            
-            windload = obj.calc_windload(area)
+                
+            windload = obj.calc_windload(
+                area=area,
+                d_st=self.condition["d_st"],
+                condition=self.condition,
+                length=length,
+            )
             moment = obj.calc_moment(windload, center)
 
             result.append((obj, windload, moment))

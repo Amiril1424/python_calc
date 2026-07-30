@@ -11,7 +11,7 @@ def nnC_P(LengthP:float, DiameterP: float) -> float:
     if HperB <= 1:
         return 0.7
     elif HperB >1 and HperB <8:
-        return round(0.2/7*HperB + 0.67144, 3)
+        return round(2 / 7 * HperB + 0.67144, 3)
     elif HperB >=8:
       return 0.9
     

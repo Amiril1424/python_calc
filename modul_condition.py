@@ -124,6 +124,9 @@ def standard_act_cond(d_st: int, adc: int, hstr: float):
     else:
         raise ValueError("Standard is not recognized")
 
+    # Tambahkan design standard ke dictionary hasil.
+    result["d_st"] = d_st
+
     return result
 
 
@@ -142,6 +145,39 @@ def direct_angle():
         PI * 3 / 4,   # NW
         PI * 7 / 4,   # SE
     ]
+
+
+def calc_kz(z_height: float, hstr: float, zb: float, alpha: float) -> float:
+    """
+    Calculate the height correction factor (Kz) .
+
+    Parameters use metres for ``z_ob``, ``hstr``, and ``zb``.
+    """
+    try:
+        z_height = float(z_height)
+        hstr = float(hstr)
+        zb = float(zb)
+        alpha = float(alpha)
+    except (TypeError, ValueError):
+        raise ValueError("Kz parameters must be numbers") from None
+
+    if z_height < 0:
+        raise ValueError("Object height (z_height) cannot be negative")
+    if hstr <= 0:
+        raise ValueError("Structure height (hstr) must be greater than zero")
+    if zb <= 0:
+        raise ValueError("zb must be greater than zero")
+    if alpha < 0:
+        raise ValueError("alpha cannot be negative")
+
+    if hstr <= zb:
+        kz = 1.0
+    elif z_height <= zb:
+        kz = (zb / hstr) ** (2 * alpha)
+    else:
+        kz = (z_height / hstr) ** (2 * alpha)
+
+    return round(kz, 3)
 
 
 # Function for wind pressure value base on standard condition
