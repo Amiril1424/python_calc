@@ -80,9 +80,25 @@ class LoadObject(ABC):
         return projected_area_m2 * coefficient * wind_pressure_n_m2
 
     @staticmethod
-    def calculate_moment(force_n: float, lever_arm_m: float) -> float:
+    def calculate_seismic_load(
+        fix_load_n: float,
+        k_value: float,
+    ) -> float:
+        """Calculate horizontal seismic load from gravitational FixLoad.
+
+        Seismic load is a scalar load for each object and is not resolved by
+        wind direction: ``SeismicLoad = FixLoad * k_value``.
+        """
+        if fix_load_n < 0:
+            raise ValueError("FixLoad cannot be negative")
+        if k_value <= 0:
+            raise ValueError("Seismic K value must be greater than zero")
+        return fix_load_n * k_value
+
+    @staticmethod
+    def calculate_moment(force_n: float, load_center_height_m: float) -> float:
         """Calculate moment in N·m."""
-        if lever_arm_m < 0:
-            raise ValueError("Lever arm cannot be negative")
-        return force_n * lever_arm_m
+        if load_center_height_m < 0:
+            raise ValueError("Load center height cannot be negative")
+        return force_n * load_center_height_m
 

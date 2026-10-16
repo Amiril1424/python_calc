@@ -2,7 +2,7 @@
 
 import unittest
 
-from domain.conditions import SeismicCondition, WindCondition
+from domain.conditions import SeismicCondition, WindCondition, std_act_common
 
 
 class WindConditionTests(unittest.TestCase):
@@ -39,6 +39,18 @@ class WindConditionTests(unittest.TestCase):
             [direction.name for direction in condition.directions],
             ["N", "S", "E", "W", "NE", "SW", "NW", "SE"],
         )
+
+    def test_er_above_zb_uses_zg_for_each_atmospheric_category(self):
+        for category, zg, alpha in (
+            (1, 250, 0.1),
+            (2, 350, 0.15),
+            (3, 450, 0.2),
+            (4, 550, 0.27),
+        ):
+            with self.subTest(category=category):
+                result = std_act_common(category, hstr=40)
+                expected = round(1.7 * (40 / zg) ** alpha, 3)
+                self.assertEqual(result["Er"], expected)
 
 
 class SeismicConditionTests(unittest.TestCase):

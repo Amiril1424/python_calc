@@ -3,7 +3,90 @@
 from dataclasses import dataclass
 from math import pi
 
-from modul_condition import calc_kz, std_act_common
+
+def std_act_common(adc: int, hstr: float) -> dict[str, float | str]:
+    """Return atmospheric parameters used by design standards 1 and 6."""
+    atmospheric_parameters = {
+        1: (5.0, 250.0, 0.1, "I"),
+        2: (5.0, 350.0, 0.15, "II"),
+        3: (5.0, 450.0, 0.2, "III"),
+        4: (10.0, 550.0, 0.27, "IV"),
+    }
+    try:
+        zb, zg, alpha, adc_symbol = atmospheric_parameters[int(adc)]
+        adc = int(adc)
+    except (KeyError, TypeError, ValueError):
+        raise ValueError("ADC is not recognized") from None
+
+    hstr = float(hstr)
+    if hstr <= 0:
+        raise ValueError("Structure height must be greater than zero")
+
+    if adc == 1:
+        gf = 2.0 if hstr <= 10 else (
+            (-0.2 / 30) * (hstr - 10) + 2.0 if hstr < 40 else 1.8
+        )
+    elif adc == 2:
+        gf = 2.2 if hstr <= 10 else (
+            (-0.2 / 30) * (hstr - 10) + 2.2 if hstr < 40 else 2.0
+        )
+    elif adc == 3:
+        gf = 2.5 if hstr <= 10 else (
+            (-0.4 / 30) * (hstr - 10) + 2.5 if hstr < 40 else 2.1
+        )
+    else:
+        gf = 3.1 if hstr <= 10 else (
+            (-0.8 / 30) * (hstr - 10) + 3.1 if hstr < 40 else 2.3
+        )
+
+    gf = round(gf, 3)
+    er_reference_height = zb if hstr <= zb else hstr
+    er = round(1.7 * (er_reference_height / zg) ** alpha, 3)
+    air_density_factor = round(er**2 * gf, 3)
+
+    return {
+        "Hstr": hstr,
+        "zb": zb,
+        "zg": zg,
+        "alpha": alpha,
+        "Gf": gf,
+        "Er": er,
+        "Ds_air": air_density_factor,
+        "ADC_symbol": adc_symbol,
+    }
+
+
+def calc_kz(
+    z_height: float,
+    hstr: float,
+    zb: float,
+    alpha: float,
+) -> float:
+    """Return the height correction factor Kz using metre-based heights."""
+    try:
+        z_height = float(z_height)
+        hstr = float(hstr)
+        zb = float(zb)
+        alpha = float(alpha)
+    except (TypeError, ValueError):
+        raise ValueError("Kz parameters must be numbers") from None
+
+    if z_height < 0:
+        raise ValueError("Object height (z_height) cannot be negative")
+    if hstr <= 0:
+        raise ValueError("Structure height (hstr) must be greater than zero")
+    if zb <= 0:
+        raise ValueError("zb must be greater than zero")
+    if alpha < 0:
+        raise ValueError("alpha cannot be negative")
+
+    if hstr <= zb:
+        kz = 1.0
+    elif z_height <= zb:
+        kz = (zb / hstr) ** (2 * alpha)
+    else:
+        kz = (z_height / hstr) ** (2 * alpha)
+    return round(kz, 3)
 
 
 @dataclass(frozen=True)

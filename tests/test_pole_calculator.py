@@ -31,8 +31,8 @@ class PoleCalculatorTests(unittest.TestCase):
         result = self.calculator.calculate_one(self.pole, 0)
 
         self.assertEqual(result.geometry.active_length_m, 4)
-        self.assertEqual(result.nnc, 0.9)
-        self.assertEqual(result.cf, 0.9)
+        self.assertEqual(result.nnc, 0.7)
+        self.assertEqual(result.cf, 0.7)
         self.assertEqual(result.wind_pressure_n_m2, 2214.0)
         self.assertEqual(result.projected_area_m2, 0.8)
         self.assertEqual(result.seismic_load_n, result.fix_load_n * 0.5)

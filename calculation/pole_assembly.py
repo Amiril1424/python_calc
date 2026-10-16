@@ -76,7 +76,7 @@ class PoleAssembly:
             diameter_bottom = pole.diameter_upper_mm
             diameter_top = pole.diameter_upper_mm
             local_center = 0.0
-            lever_arm = 0.0
+            load_center_height = 0.0
         else:
             bottom_distance_from_top = segment_top - active_bottom
             top_distance_from_top = segment_top - active_top
@@ -93,7 +93,9 @@ class PoleAssembly:
                 diameter_bottom,
                 diameter_top,
             )
-            lever_arm = active_bottom - evaluated_position_m + local_center
+            load_center_height = (
+                active_bottom - evaluated_position_m + local_center
+            )
 
         return PoleActiveGeometry(
             pole_name=pole.name,
@@ -107,7 +109,7 @@ class PoleAssembly:
             diameter_at_active_bottom_mm=diameter_bottom,
             diameter_at_active_top_mm=diameter_top,
             local_load_center_m=local_center,
-            lever_arm_m=lever_arm,
+            load_center_height_m=load_center_height,
         )
 
     def geometries_at(

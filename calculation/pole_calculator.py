@@ -46,6 +46,7 @@ class PoleCalculator:
         nnc = pole.base_wind_coefficient(
             geometry.active_length_m,
             diameter_bottom,
+            self.wind_condition.design_standard,
         )
         kz = self.wind_condition.kz_at(pole.top_elevation_m)
         cf = pole.wind_coefficient(
@@ -78,16 +79,22 @@ class PoleCalculator:
             cf,
             wind_pressure,
         )
-        seismic_load = fix_load * self.seismic_condition.k_value
-        wind_moment = pole.calculate_moment(wind_load, geometry.lever_arm_m)
+        seismic_load = pole.calculate_seismic_load(
+            fix_load_n=fix_load,
+            k_value=self.seismic_condition.k_value,
+        )
+        wind_moment = pole.calculate_moment(
+            wind_load,
+            geometry.load_center_height_m,
+        )
         seismic_moment = pole.calculate_moment(
             seismic_load,
-            geometry.lever_arm_m,
+            geometry.load_center_height_m,
         )
         directional_results = tuple(
             self._directional_result(
                 wind_load,
-                geometry.lever_arm_m,
+                geometry.load_center_height_m,
                 direction.name,
                 direction.angle_rad,
             )
@@ -187,7 +194,7 @@ class PoleCalculator:
     @staticmethod
     def _directional_result(
         wind_load_n: float,
-        lever_arm_m: float,
+        load_center_height_m: float,
         direction: str,
         angle_rad: float,
     ) -> PoleDirectionalResult:
@@ -200,6 +207,6 @@ class PoleCalculator:
             angle_rad=angle_rad,
             wind_load_x_n=wind_x,
             wind_load_y_n=wind_y,
-            wind_moment_x_nm=lever_arm_m * wind_y,
-            wind_moment_y_nm=lever_arm_m * wind_x,
+            wind_moment_x_nm=load_center_height_m * wind_y,
+            wind_moment_y_nm=load_center_height_m * wind_x,
         )

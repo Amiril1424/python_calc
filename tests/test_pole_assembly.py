@@ -41,13 +41,13 @@ class PoleAssemblyTests(unittest.TestCase):
         self.assertEqual(geometry.segment_top_m, 9.0)
         self.assertEqual(geometry.active_bottom_m, 6.0)
         self.assertEqual(geometry.active_length_m, 3.0)
-        self.assertEqual(geometry.lever_arm_m, 1.5)
+        self.assertEqual(geometry.load_center_height_m, 1.5)
 
-    def test_upper_segment_lever_arm_includes_offset(self):
+    def test_upper_segment_load_center_height_includes_offset(self):
         geometry = self.assembly.active_geometry(self.upper, 6.0)
 
         self.assertEqual(geometry.active_length_m, 5.0)
-        self.assertEqual(geometry.lever_arm_m, 5.5)
+        self.assertEqual(geometry.load_center_height_m, 5.5)
 
     def test_only_poles_above_position_are_active(self):
         active = self.assembly.active_poles(9.0)
@@ -60,7 +60,7 @@ class PoleAssemblyTests(unittest.TestCase):
         self.assertEqual(geometry.active_bottom_m, 4.0)
         self.assertEqual(geometry.active_top_m, 4.0)
         self.assertEqual(geometry.active_length_m, 0.0)
-        self.assertEqual(geometry.lever_arm_m, 0.0)
+        self.assertEqual(geometry.load_center_height_m, 0.0)
 
 
 if __name__ == "__main__":

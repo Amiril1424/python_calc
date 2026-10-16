@@ -23,9 +23,21 @@ def straight_pole(name="P1", top=10.0, diameter=200.0):
 
 class PoleObjectTests(unittest.TestCase):
     def test_nnc_uses_confirmed_linear_interpolation(self):
-        self.assertEqual(PoleObject.base_wind_coefficient(0.2, 200), 0.7)
-        self.assertEqual(PoleObject.base_wind_coefficient(0.8, 200), 0.786)
-        self.assertEqual(PoleObject.base_wind_coefficient(1.6, 200), 0.9)
+        self.assertEqual(PoleObject.base_wind_coefficient(0.2, 200, 1), 0.7)
+        self.assertEqual(PoleObject.base_wind_coefficient(0.8, 200, 1), 0.786)
+        self.assertEqual(PoleObject.base_wind_coefficient(1.6, 200, 6), 0.9)
+
+    def test_nnc_is_fixed_for_standards_two_through_five(self):
+        for design_standard in (2, 3, 4, 5):
+            with self.subTest(design_standard=design_standard):
+                self.assertEqual(
+                    PoleObject.base_wind_coefficient(
+                        active_length_m=1.6,
+                        diameter_mm=200,
+                        design_standard=design_standard,
+                    ),
+                    0.7,
+                )
 
     def test_straight_projected_area(self):
         pole = straight_pole()
@@ -102,6 +114,16 @@ class PoleObjectTests(unittest.TestCase):
 
         self.assertEqual(fix_load, mass * pole.GRAVITY * 1.25)
 
+    def test_seismic_load_is_fixload_times_k_value(self):
+        pole = straight_pole()
+
+        seismic_load = pole.calculate_seismic_load(
+            fix_load_n=1000,
+            k_value=0.5,
+        )
+
+        self.assertEqual(seismic_load, 500)
+
     def test_overdesign_factor_rejects_non_positive_value(self):
         with self.assertRaises(ValueError):
             OverdesignFactor(0)
@@ -148,7 +170,7 @@ class PoleObjectTests(unittest.TestCase):
         )
 
         self.assertEqual(diameter_at_active_bottom, 210)
-        self.assertEqual(cf, 0.807)
+        self.assertEqual(cf, 0.7)
 
 
 if __name__ == "__main__":

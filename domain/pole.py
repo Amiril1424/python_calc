@@ -227,8 +227,18 @@ class PoleObject(LoadObject):
         cls,
         active_length_m: float,
         diameter_mm: float,
+        design_standard: int,
     ) -> float:
-        """Calculate pole nnC from its HpB ratio."""
+        """Calculate pole nnC according to the selected design standard.
+
+        Standards 1 and 6 use the pole HpB ratio. Standards 2 through 5
+        use the fixed value 0.7, following ``Pole_each.Calc_Cf`` in VBA.
+        """
+        if design_standard not in {1, 2, 3, 4, 5, 6}:
+            raise ValueError("Design standard must be between 1 and 6")
+        if design_standard not in {1, 6}:
+            return 0.7
+
         hpb = cls.slenderness_ratio(active_length_m, diameter_mm)
         if hpb <= 1:
             nnc = 0.7
@@ -254,6 +264,7 @@ class PoleObject(LoadObject):
         nnc = self.base_wind_coefficient(
             active_length_m=active_length_m,
             diameter_mm=diameter_at_active_bottom_mm,
+            design_standard=design_standard,
         )
         cf = nnc * kz if design_standard == 1 else nnc
         return round(cf, 3)
