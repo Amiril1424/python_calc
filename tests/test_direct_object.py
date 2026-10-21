@@ -3,6 +3,7 @@
 import unittest
 
 from calculation.direct_object_calculator import DirectObjectCalculator
+from calculation.rounding import CalculationValueType
 from domain.conditions import SeismicCondition, WindCondition
 from domain.direct_object import DirectObject
 
@@ -94,10 +95,19 @@ class DirectObjectCalculatorTests(unittest.TestCase):
     def test_seismic_load_and_moment_follow_confirmed_rule(self):
         result = self.calculator.calculate_one(self.upper, 4)
 
-        self.assertEqual(result.seismic_load_n, result.fix_load_n * 0.5)
+        self.assertEqual(
+            result.seismic_load_n,
+            self.calculator.rounding.apply(
+                result.fix_load_n * 0.5,
+                CalculationValueType.LOAD,
+            ),
+        )
         self.assertEqual(
             result.seismic_moment_nm,
-            result.seismic_load_n * 6,
+            self.calculator.rounding.apply(
+                result.seismic_load_n * 6,
+                CalculationValueType.MOMENT,
+            ),
         )
 
     def test_directional_components_and_moments_follow_vba(self):
@@ -111,7 +121,10 @@ class DirectObjectCalculatorTests(unittest.TestCase):
         self.assertGreater(by_direction["N"].wind_load_y_n, 0)
         self.assertEqual(
             by_direction["N"].wind_moment_x_nm,
-            by_direction["N"].wind_load_y_n * 6,
+            self.calculator.rounding.apply(
+                by_direction["N"].wind_load_y_n * 6,
+                CalculationValueType.MOMENT,
+            ),
         )
 
     def test_aggregation_sums_active_objects_per_direction(self):

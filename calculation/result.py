@@ -1,8 +1,14 @@
 """Immutable result objects returned by the calculation engine."""
 
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 from domain.pole import PoleSectionProperties
+
+if TYPE_CHECKING:
+    from calculation.stress import CompressionBendingStressResult
+    from calculation.stress import SimpleBendingStressResult
+    from domain.standards import DesignStandard
 
 
 @dataclass(frozen=True)
@@ -300,4 +306,51 @@ class CalculationResult:
 
     evaluated_position_m: float
     pole_results: tuple[PoleCalculationResult, ...] = ()
+
+
+@dataclass(frozen=True)
+class Standard126CalculationResult:
+    """Complete Stage 8 result for the d_st 1, 2, and 6 workflow."""
+
+    design_standard: "DesignStandard"
+    pole_aggregation: PoleAggregationResult
+    direct_object_aggregation: DirectObjectAggregationResult | None
+    overhead_wire_aggregation: OverheadWireAggregationResult | None
+    evaluated_position_result: EvaluatedPositionResult
+    stress_result: "CompressionBendingStressResult"
+
+
+@dataclass(frozen=True)
+class Standard34DirectionResult:
+    """One straight or oblique wind result for d_st 3 and 4."""
+
+    wind_case_name: str
+    wind_direction_deg: float
+    total_wind_load_n: float
+    total_wind_load_x_n: float
+    total_wind_load_y_n: float
+    total_wind_tension_n: float
+    resultant_wind_load_x_n: float
+    resultant_wind_load_y_n: float
+    resultant_wind_load_n: float
+    combined_wind_moment_x_nm: float
+    combined_wind_moment_y_nm: float
+    combined_wind_moment_nm: float
+    bending_stress: "SimpleBendingStressResult"
+
+
+@dataclass(frozen=True)
+class Standard34CalculationResult:
+    """Stage 9 output without compression, torque, or seismic result fields."""
+
+    design_standard: "DesignStandard"
+    evaluated_position_m: float
+    evaluated_pole_name: str
+    material_name: str
+    section_properties: PoleSectionProperties
+    total_fix_load_n: float
+    pole_aggregation: PoleAggregationResult
+    direct_object_aggregation: DirectObjectAggregationResult
+    overhead_wire_aggregation: OverheadWireAggregationResult
+    direction_results: tuple[Standard34DirectionResult, ...]
 

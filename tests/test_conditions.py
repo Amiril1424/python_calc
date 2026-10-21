@@ -16,7 +16,7 @@ class WindConditionTests(unittest.TestCase):
         condition = WindCondition(
             design_standard=6,
             structure_height_m=40,
-            atmospheric_category=2,
+            area_density_code=2,
             basic_wind_speed_m_s=1,
         )
 
@@ -26,7 +26,7 @@ class WindConditionTests(unittest.TestCase):
         condition = WindCondition(
             design_standard=1,
             structure_height_m=40,
-            atmospheric_category=2,
+            area_density_code=2,
             basic_wind_speed_m_s=60,
         )
 
@@ -40,7 +40,7 @@ class WindConditionTests(unittest.TestCase):
             ["N", "S", "E", "W", "NE", "SW", "NW", "SE"],
         )
 
-    def test_er_above_zb_uses_zg_for_each_atmospheric_category(self):
+    def test_er_above_zb_uses_zg_for_each_area_density_code(self):
         for category, zg, alpha in (
             (1, 250, 0.1),
             (2, 350, 0.15),

@@ -4,6 +4,7 @@ import unittest
 from math import cos, radians
 
 from calculation.overhead_wire_calculator import OverheadWireCalculator
+from calculation.rounding import CalculationValueType
 from domain.conditions import SeismicCondition, WindCondition
 from domain.overhead_wire import OverheadWire
 
@@ -88,10 +89,19 @@ class OverheadWireCalculatorTests(unittest.TestCase):
     def test_seismic_load_uses_fixload_times_k_value(self):
         result = self.calculator.calculate_one(self.upper, 4)
 
-        self.assertEqual(result.seismic_load_n, result.fix_load_n * 0.5)
+        self.assertEqual(
+            result.seismic_load_n,
+            self.calculator.rounding.apply(
+                result.fix_load_n * 0.5,
+                CalculationValueType.LOAD,
+            ),
+        )
         self.assertEqual(
             result.seismic_moment_nm,
-            result.seismic_load_n * 6,
+            self.calculator.rounding.apply(
+                result.seismic_load_n * 6,
+                CalculationValueType.MOMENT,
+            ),
         )
 
     def test_seismic_tension_moment_varies_with_angle_of_attack(self):

@@ -4,6 +4,7 @@ import unittest
 from math import hypot, pi
 
 from calculation.evaluated_position_calculator import EvaluatedPositionCalculator
+from calculation.rounding import CalculationValueType
 from calculation.overhead_wire_calculator import OverheadWireCalculator
 from calculation.pole_assembly import PoleAssembly
 from calculation.pole_calculator import PoleCalculator
@@ -80,7 +81,11 @@ class EvaluatedPositionCalculatorTests(unittest.TestCase):
         self.assertAlmostEqual(north.combined_wind_moment_nm, expected_moment)
         self.assertAlmostEqual(
             north.wind_strength.calculated_stress_n_mm2,
-            expected_moment / result.section_properties.section_modulus_cm3,
+            self.calculator.rounding.apply(
+                expected_moment
+                / result.section_properties.section_modulus_cm3,
+                CalculationValueType.STRESS,
+            ),
         )
 
     def test_vba_boundary_rule_marks_utilization_one_as_ng(self):

@@ -5,6 +5,8 @@ from math import cos, fsum, pi, sin
 
 from domain.conditions import SeismicCondition, WindCondition
 from domain.overhead_wire import OverheadWire
+from .rounding import CalculationValueType, rounding_profile_for
+from .seismic import SeismicPolicy, seismic_policy_for
 
 from .result import (
     OverheadWireAggregationResult,
@@ -22,6 +24,9 @@ class OverheadWireCalculator:
         wires: Iterable[OverheadWire],
         wind_condition: WindCondition,
         seismic_condition: SeismicCondition,
+        seismic_policy: SeismicPolicy | None = None,
+        enable_optional_seismic: bool = False,
+        calculate_seismic_tension: bool = True,
     ) -> None:
         self.wires = tuple(wires)
         if any(not isinstance(wire, OverheadWire) for wire in self.wires):
@@ -30,6 +35,13 @@ class OverheadWireCalculator:
             )
         self.wind_condition = wind_condition
         self.seismic_condition = seismic_condition
+        self.rounding = rounding_profile_for(wind_condition.design_standard)
+        self.seismic_policy = seismic_policy or seismic_policy_for(
+            wind_condition.design_standard,
+            k_value=seismic_condition.k_value,
+            enable_optional_seismic=enable_optional_seismic,
+        )
+        self.calculate_seismic_tension = bool(calculate_seismic_tension)
 
     def active_wires(
         self,
@@ -51,23 +63,51 @@ class OverheadWireCalculator:
                 f"OHW {wire.name!r} is below the EvaluatedPosition"
             )
 
-        load_center_height = wire.load_center_height_m(evaluated_position_m)
+        load_center_height = self.rounding.apply(
+            wire.load_center_height_m(evaluated_position_m),
+            CalculationValueType.LOAD_CENTER_HEIGHT,
+        )
         kz = self.wind_condition.kz_at(wire.elevation_m)
         cf = wire.wind_coefficient(
             self.wind_condition.design_standard,
             kz,
         )
-        wind_pressure = self.wind_condition.wind_pressure_at(wire.elevation_m)
-        fix_load = wire.fix_load_n()
-        seismic_load = wire.calculate_seismic_load(
-            fix_load,
-            self.seismic_condition.k_value,
+        wind_pressure = self.rounding.apply(
+            self.wind_condition.wind_pressure_at(wire.elevation_m),
+            CalculationValueType.WIND_PRESSURE,
         )
-        seismic_moment = wire.calculate_moment(
-            seismic_load,
-            load_center_height,
+        fix_load_per_length = self.rounding.apply(
+            wire.fix_load_per_length_n_m(),
+            CalculationValueType.WEIGHT_PER_METER,
         )
-        seismic_tension = wire.seismic_tension_n()
+        fix_load = self.rounding.apply(
+            wire.fix_load_n(),
+            CalculationValueType.LOAD,
+        )
+        total_mass = wire.total_mass_kg()
+        seismic_load = self.rounding.apply(
+            self.seismic_policy.calculate_load_n(
+                fix_load_n=fix_load,
+                mass_kg=total_mass,
+            ),
+            CalculationValueType.LOAD,
+        )
+        seismic_moment = self.rounding.apply(
+            wire.calculate_moment(seismic_load, load_center_height),
+            CalculationValueType.MOMENT,
+        )
+        seismic_tension = 0.0
+        if self.seismic_policy.enabled and self.calculate_seismic_tension:
+            seismic_tension = self.rounding.apply(
+                wire.tension_from_line_load(
+                    fix_load_per_length / wire.vertical_angle_cosine
+                ),
+                CalculationValueType.LOAD,
+            )
+        projected_area = self.rounding.apply(
+            wire.projected_area(),
+            CalculationValueType.PROJECTED_AREA,
+        )
         directional_results = tuple(
             self._directional_result(
                 wire,
@@ -87,13 +127,13 @@ class OverheadWireCalculator:
             elevation_m=wire.elevation_m,
             load_center_height_m=load_center_height,
             tributary_wire_length_m=wire.tributary_wire_length_m(),
-            total_mass_kg=wire.total_mass_kg(),
+            total_mass_kg=total_mass,
             nnc=wire.base_wind_coefficient,
             kz=kz,
             cf=cf,
             wind_pressure_n_m2=wind_pressure,
-            projected_area_m2=wire.projected_area(),
-            fix_load_per_length_n_m=wire.fix_load_per_length_n_m(),
+            projected_area_m2=projected_area,
+            fix_load_per_length_n_m=fix_load_per_length,
             fix_load_n=fix_load,
             seismic_load_n=seismic_load,
             seismic_moment_nm=seismic_moment,
@@ -119,15 +159,21 @@ class OverheadWireCalculator:
             evaluated_position_m=float(evaluated_position_m),
             wire_results=results,
             active_wire_count=len(results),
-            total_fix_load_n=fsum(result.fix_load_n for result in results),
-            total_seismic_load_n=fsum(
-                result.seismic_load_n for result in results
+            total_fix_load_n=self.rounding.apply(
+                fsum(result.fix_load_n for result in results),
+                CalculationValueType.LOAD,
             ),
-            total_seismic_moment_nm=fsum(
-                result.seismic_moment_nm for result in results
+            total_seismic_load_n=self.rounding.apply(
+                fsum(result.seismic_load_n for result in results),
+                CalculationValueType.LOAD,
             ),
-            total_seismic_tension_n=fsum(
-                result.seismic_tension_n for result in results
+            total_seismic_moment_nm=self.rounding.apply(
+                fsum(result.seismic_moment_nm for result in results),
+                CalculationValueType.MOMENT,
+            ),
+            total_seismic_tension_n=self.rounding.apply(
+                fsum(result.seismic_tension_n for result in results),
+                CalculationValueType.LOAD,
             ),
             directional_totals=tuple(
                 self._aggregate_direction(
@@ -139,8 +185,8 @@ class OverheadWireCalculator:
             ),
         )
 
-    @staticmethod
     def _directional_result(
+        self,
         wire: OverheadWire,
         direction: str,
         wind_angle_rad: float,
@@ -151,21 +197,49 @@ class OverheadWireCalculator:
     ) -> OverheadWireDirectionalResult:
         angle_of_attack = wire.angle_of_attack_rad(wind_angle_rad)
         sine, cosine = wire.direction_factors(wind_angle_rad)
-        directional_area = wire.projected_area(wind_angle_rad)
-        wind_load = wire.calculate_wind_load(
-            directional_area,
-            cf,
-            wind_pressure_n_m2,
+        directional_area = self.rounding.apply(
+            wire.projected_area(wind_angle_rad),
+            CalculationValueType.PROJECTED_AREA,
         )
-        wind_x = wind_load * round(cos(wind_angle_rad + pi), 3)
-        wind_y = wind_load * round(sin(wind_angle_rad), 3)
-        combined_line_load = wire.combined_wind_line_load_n_m(
-            wind_pressure_n_m2,
-            cf,
-            wind_angle_rad,
+        wind_load = self.rounding.apply(
+            wire.calculate_wind_load(
+                directional_area,
+                cf,
+                wind_pressure_n_m2,
+            ),
+            CalculationValueType.LOAD,
         )
-        wind_tension = wire.tension_from_line_load(combined_line_load)
-        tension_x, tension_y = wire.wind_tension_components_n(wind_tension)
+        wind_x = self.rounding.apply(
+            wind_load * round(cos(wind_angle_rad + pi), 3),
+            CalculationValueType.LOAD,
+        )
+        wind_y = self.rounding.apply(
+            wind_load * round(sin(wind_angle_rad), 3),
+            CalculationValueType.LOAD,
+        )
+        combined_line_load = self.rounding.apply(
+            wire.combined_wind_line_load_n_m(
+                wind_pressure_n_m2,
+                cf,
+                wind_angle_rad,
+            ),
+            CalculationValueType.WIRE_LOAD_COMBINATION,
+        )
+        wind_tension = self.rounding.apply(
+            wire.tension_from_line_load(combined_line_load),
+            CalculationValueType.LOAD,
+        )
+        raw_tension_x, raw_tension_y = wire.wind_tension_components_n(
+            wind_tension
+        )
+        tension_x = self.rounding.apply(
+            raw_tension_x,
+            CalculationValueType.LOAD,
+        )
+        tension_y = self.rounding.apply(
+            raw_tension_y,
+            CalculationValueType.LOAD,
+        )
 
         return OverheadWireDirectionalResult(
             direction=direction,
@@ -177,25 +251,42 @@ class OverheadWireCalculator:
             wind_load_n=wind_load,
             wind_load_x_n=wind_x,
             wind_load_y_n=wind_y,
-            wind_moment_nm=wind_load * load_center_height_m,
-            wind_moment_x_nm=wind_y * load_center_height_m,
-            wind_moment_y_nm=wind_x * load_center_height_m,
+            wind_moment_nm=self.rounding.apply(
+                wind_load * load_center_height_m,
+                CalculationValueType.MOMENT,
+            ),
+            wind_moment_x_nm=self.rounding.apply(
+                wind_y * load_center_height_m,
+                CalculationValueType.MOMENT,
+            ),
+            wind_moment_y_nm=self.rounding.apply(
+                wind_x * load_center_height_m,
+                CalculationValueType.MOMENT,
+            ),
             combined_wind_line_load_n_m=combined_line_load,
             wind_tension_n=wind_tension,
             wind_tension_x_n=tension_x,
             wind_tension_y_n=tension_y,
-            wind_tension_moment_nm=(
-                wind_tension * load_center_height_m * cosine
+            wind_tension_moment_nm=self.rounding.apply(
+                wind_tension * load_center_height_m * cosine,
+                CalculationValueType.MOMENT,
             ),
-            wind_tension_moment_x_nm=tension_y * load_center_height_m,
-            wind_tension_moment_y_nm=tension_x * load_center_height_m,
-            seismic_tension_moment_nm=(
-                seismic_tension_n * load_center_height_m * cosine
+            wind_tension_moment_x_nm=self.rounding.apply(
+                tension_y * load_center_height_m,
+                CalculationValueType.MOMENT,
+            ),
+            wind_tension_moment_y_nm=self.rounding.apply(
+                tension_x * load_center_height_m,
+                CalculationValueType.MOMENT,
+            ),
+            seismic_tension_moment_nm=self.rounding.apply(
+                seismic_tension_n * load_center_height_m * cosine,
+                CalculationValueType.MOMENT,
             ),
         )
 
-    @staticmethod
     def _aggregate_direction(
+        self,
         results: tuple[OverheadWireCalculationResult, ...],
         direction: str,
         angle_rad: float,
@@ -209,33 +300,56 @@ class OverheadWireCalculator:
         return OverheadWireDirectionalTotal(
             direction=direction,
             angle_rad=angle_rad,
-            total_wind_load_n=fsum(item.wind_load_n for item in items),
-            total_wind_load_x_n=fsum(item.wind_load_x_n for item in items),
-            total_wind_load_y_n=fsum(item.wind_load_y_n for item in items),
-            total_wind_moment_nm=fsum(item.wind_moment_nm for item in items),
-            total_wind_moment_x_nm=fsum(
-                item.wind_moment_x_nm for item in items
+            total_wind_load_n=self.rounding.apply(
+                fsum(item.wind_load_n for item in items),
+                CalculationValueType.LOAD,
             ),
-            total_wind_moment_y_nm=fsum(
-                item.wind_moment_y_nm for item in items
+            total_wind_load_x_n=self.rounding.apply(
+                fsum(item.wind_load_x_n for item in items),
+                CalculationValueType.LOAD,
             ),
-            total_wind_tension_n=fsum(item.wind_tension_n for item in items),
-            total_wind_tension_x_n=fsum(
-                item.wind_tension_x_n for item in items
+            total_wind_load_y_n=self.rounding.apply(
+                fsum(item.wind_load_y_n for item in items),
+                CalculationValueType.LOAD,
             ),
-            total_wind_tension_y_n=fsum(
-                item.wind_tension_y_n for item in items
+            total_wind_moment_nm=self.rounding.apply(
+                fsum(item.wind_moment_nm for item in items),
+                CalculationValueType.MOMENT,
             ),
-            total_wind_tension_moment_nm=fsum(
-                item.wind_tension_moment_nm for item in items
+            total_wind_moment_x_nm=self.rounding.apply(
+                fsum(item.wind_moment_x_nm for item in items),
+                CalculationValueType.MOMENT,
             ),
-            total_wind_tension_moment_x_nm=fsum(
-                item.wind_tension_moment_x_nm for item in items
+            total_wind_moment_y_nm=self.rounding.apply(
+                fsum(item.wind_moment_y_nm for item in items),
+                CalculationValueType.MOMENT,
             ),
-            total_wind_tension_moment_y_nm=fsum(
-                item.wind_tension_moment_y_nm for item in items
+            total_wind_tension_n=self.rounding.apply(
+                fsum(item.wind_tension_n for item in items),
+                CalculationValueType.LOAD,
             ),
-            total_seismic_tension_moment_nm=fsum(
-                item.seismic_tension_moment_nm for item in items
+            total_wind_tension_x_n=self.rounding.apply(
+                fsum(item.wind_tension_x_n for item in items),
+                CalculationValueType.LOAD,
+            ),
+            total_wind_tension_y_n=self.rounding.apply(
+                fsum(item.wind_tension_y_n for item in items),
+                CalculationValueType.LOAD,
+            ),
+            total_wind_tension_moment_nm=self.rounding.apply(
+                fsum(item.wind_tension_moment_nm for item in items),
+                CalculationValueType.MOMENT,
+            ),
+            total_wind_tension_moment_x_nm=self.rounding.apply(
+                fsum(item.wind_tension_moment_x_nm for item in items),
+                CalculationValueType.MOMENT,
+            ),
+            total_wind_tension_moment_y_nm=self.rounding.apply(
+                fsum(item.wind_tension_moment_y_nm for item in items),
+                CalculationValueType.MOMENT,
+            ),
+            total_seismic_tension_moment_nm=self.rounding.apply(
+                fsum(item.seismic_tension_moment_nm for item in items),
+                CalculationValueType.MOMENT,
             ),
         )

@@ -1,5 +1,6 @@
 """Complete load calculation for assembled pole segments."""
 
+from dataclasses import replace
 from math import cos, pi, sin
 from math import fsum
 
@@ -13,6 +14,8 @@ from .result import (
 from domain.conditions import SeismicCondition, WindCondition
 from domain.loads import OverdesignFactor
 from domain.pole import PoleObject
+from .rounding import CalculationValueType, rounding_profile_for
+from .seismic import SeismicPolicy, seismic_policy_for
 
 
 class PoleCalculator:
@@ -24,11 +27,19 @@ class PoleCalculator:
         wind_condition: WindCondition,
         seismic_condition: SeismicCondition,
         overdesign_factor: OverdesignFactor | None = None,
+        seismic_policy: SeismicPolicy | None = None,
+        enable_optional_seismic: bool = False,
     ) -> None:
         self.assembly = assembly
         self.wind_condition = wind_condition
         self.seismic_condition = seismic_condition
         self.overdesign_factor = overdesign_factor or OverdesignFactor()
+        self.rounding = rounding_profile_for(wind_condition.design_standard)
+        self.seismic_policy = seismic_policy or seismic_policy_for(
+            wind_condition.design_standard,
+            k_value=seismic_condition.k_value,
+            enable_optional_seismic=enable_optional_seismic,
+        )
 
     def calculate_one(
         self,
@@ -41,8 +52,27 @@ class PoleCalculator:
                 f"Pole {pole.name!r} is not active above the evaluated position"
             )
 
-        diameter_bottom = geometry.diameter_at_active_bottom_mm
-        diameter_top = geometry.diameter_at_active_top_mm
+        diameter_bottom = self.rounding.apply(
+            geometry.diameter_at_active_bottom_mm,
+            CalculationValueType.CALCULATED_POLE_DIAMETER,
+        )
+        diameter_top = self.rounding.apply(
+            geometry.diameter_at_active_top_mm,
+            CalculationValueType.CALCULATED_POLE_DIAMETER,
+        )
+        geometry = replace(
+            geometry,
+            diameter_at_active_bottom_mm=diameter_bottom,
+            diameter_at_active_top_mm=diameter_top,
+            local_load_center_m=self.rounding.apply(
+                geometry.local_load_center_m,
+                CalculationValueType.LOAD_CENTER_HEIGHT,
+            ),
+            load_center_height_m=self.rounding.apply(
+                geometry.load_center_height_m,
+                CalculationValueType.LOAD_CENTER_HEIGHT,
+            ),
+        )
         nnc = pole.base_wind_coefficient(
             geometry.active_length_m,
             diameter_bottom,
@@ -55,41 +85,50 @@ class PoleCalculator:
             self.wind_condition.design_standard,
             kz,
         )
-        wind_pressure = self.wind_condition.wind_pressure_at(
-            pole.top_elevation_m
+        wind_pressure = self.rounding.apply(
+            self.wind_condition.wind_pressure_at(pole.top_elevation_m),
+            CalculationValueType.WIND_PRESSURE,
         )
-        projected_area = pole.projected_area(
-            geometry.active_length_m,
-            diameter_bottom,
-            diameter_top,
+        projected_area = self.rounding.apply(
+            pole.projected_area(
+                geometry.active_length_m,
+                diameter_bottom,
+                diameter_top,
+            ),
+            CalculationValueType.PROJECTED_AREA,
         )
         mass = pole.mass_kg(
             geometry.active_length_m,
             diameter_bottom,
             diameter_top,
         )
-        fix_load = pole.fix_load_n(
-            geometry.active_length_m,
-            diameter_bottom,
-            diameter_top,
-            self.overdesign_factor,
+        fix_load = self.rounding.apply(
+            pole.fix_load_n(
+                geometry.active_length_m,
+                diameter_bottom,
+                diameter_top,
+                self.overdesign_factor,
+            ),
+            CalculationValueType.LOAD,
         )
-        wind_load = pole.calculate_wind_load(
-            projected_area,
-            cf,
-            wind_pressure,
+        wind_load = self.rounding.apply(
+            pole.calculate_wind_load(projected_area, cf, wind_pressure),
+            CalculationValueType.LOAD,
         )
-        seismic_load = pole.calculate_seismic_load(
-            fix_load_n=fix_load,
-            k_value=self.seismic_condition.k_value,
+        seismic_load = self.rounding.apply(
+            self.seismic_policy.calculate_load_n(
+                fix_load_n=fix_load,
+                mass_kg=mass * self.overdesign_factor.value,
+            ),
+            CalculationValueType.LOAD,
         )
-        wind_moment = pole.calculate_moment(
-            wind_load,
-            geometry.load_center_height_m,
+        wind_moment = self.rounding.apply(
+            pole.calculate_moment(wind_load, geometry.load_center_height_m),
+            CalculationValueType.MOMENT,
         )
-        seismic_moment = pole.calculate_moment(
-            seismic_load,
-            geometry.load_center_height_m,
+        seismic_moment = self.rounding.apply(
+            pole.calculate_moment(seismic_load, geometry.load_center_height_m),
+            CalculationValueType.MOMENT,
         )
         directional_results = tuple(
             self._directional_result(
@@ -101,9 +140,34 @@ class PoleCalculator:
             for direction in self.wind_condition.directions
         )
 
+        section_properties = pole.section_properties(diameter_bottom)
+        section_properties = replace(
+            section_properties,
+            cross_section_area_cm2=self.rounding.apply(
+                section_properties.cross_section_area_cm2,
+                CalculationValueType.CROSS_SECTION_AREA,
+            ),
+            section_modulus_cm3=self.rounding.apply(
+                section_properties.section_modulus_cm3,
+                CalculationValueType.SECTION_MODULUS,
+            ),
+            moment_of_inertia_cm4=self.rounding.apply(
+                section_properties.moment_of_inertia_cm4,
+                CalculationValueType.MOMENT_OF_INERTIA,
+            ),
+            second_moment_pair_cm4=self.rounding.apply(
+                section_properties.second_moment_pair_cm4,
+                CalculationValueType.MOMENT_OF_INERTIA,
+            ),
+            radius_of_gyration_cm=self.rounding.apply(
+                section_properties.radius_of_gyration_cm,
+                CalculationValueType.RADIUS_OF_GYRATION,
+            ),
+        )
+
         return PoleCalculationResult(
             geometry=geometry,
-            section_properties=pole.section_properties(diameter_bottom),
+            section_properties=section_properties,
             nnc=nnc,
             kz=kz,
             cf=cf,
@@ -147,20 +211,23 @@ class PoleCalculator:
         return PoleAggregationResult(
             evaluated_position_m=float(evaluated_position_m),
             pole_results=pole_results,
-            total_fix_load_n=fsum(
-                result.fix_load_n for result in pole_results
+            total_fix_load_n=self.rounding.apply(
+                fsum(result.fix_load_n for result in pole_results),
+                CalculationValueType.LOAD,
             ),
-            total_seismic_load_n=fsum(
-                result.seismic_load_n for result in pole_results
+            total_seismic_load_n=self.rounding.apply(
+                fsum(result.seismic_load_n for result in pole_results),
+                CalculationValueType.LOAD,
             ),
-            total_seismic_moment_nm=fsum(
-                result.seismic_moment_nm for result in pole_results
+            total_seismic_moment_nm=self.rounding.apply(
+                fsum(result.seismic_moment_nm for result in pole_results),
+                CalculationValueType.MOMENT,
             ),
             directional_totals=directional_totals,
         )
 
-    @staticmethod
     def _aggregate_direction(
+        self,
         pole_results: tuple[PoleCalculationResult, ...],
         direction: str,
         angle_rad: float,
@@ -174,25 +241,30 @@ class PoleCalculator:
         return PoleDirectionalTotal(
             direction=direction,
             angle_rad=angle_rad,
-            total_wind_load_n=fsum(
-                result.wind_load_n for result in pole_results
+            total_wind_load_n=self.rounding.apply(
+                fsum(result.wind_load_n for result in pole_results),
+                CalculationValueType.LOAD,
             ),
-            total_wind_load_x_n=fsum(
-                result.wind_load_x_n for result in matching_results
+            total_wind_load_x_n=self.rounding.apply(
+                fsum(result.wind_load_x_n for result in matching_results),
+                CalculationValueType.LOAD,
             ),
-            total_wind_load_y_n=fsum(
-                result.wind_load_y_n for result in matching_results
+            total_wind_load_y_n=self.rounding.apply(
+                fsum(result.wind_load_y_n for result in matching_results),
+                CalculationValueType.LOAD,
             ),
-            total_wind_moment_x_nm=fsum(
-                result.wind_moment_x_nm for result in matching_results
+            total_wind_moment_x_nm=self.rounding.apply(
+                fsum(result.wind_moment_x_nm for result in matching_results),
+                CalculationValueType.MOMENT,
             ),
-            total_wind_moment_y_nm=fsum(
-                result.wind_moment_y_nm for result in matching_results
+            total_wind_moment_y_nm=self.rounding.apply(
+                fsum(result.wind_moment_y_nm for result in matching_results),
+                CalculationValueType.MOMENT,
             ),
         )
 
-    @staticmethod
     def _directional_result(
+        self,
         wind_load_n: float,
         load_center_height_m: float,
         direction: str,
@@ -200,13 +272,25 @@ class PoleCalculator:
     ) -> PoleDirectionalResult:
         direction_cosine = round(cos(angle_rad + pi), 3)
         direction_sine = round(sin(angle_rad), 3)
-        wind_x = wind_load_n * direction_cosine
-        wind_y = wind_load_n * direction_sine
+        wind_x = self.rounding.apply(
+            wind_load_n * direction_cosine,
+            CalculationValueType.LOAD,
+        )
+        wind_y = self.rounding.apply(
+            wind_load_n * direction_sine,
+            CalculationValueType.LOAD,
+        )
         return PoleDirectionalResult(
             direction=direction,
             angle_rad=angle_rad,
             wind_load_x_n=wind_x,
             wind_load_y_n=wind_y,
-            wind_moment_x_nm=load_center_height_m * wind_y,
-            wind_moment_y_nm=load_center_height_m * wind_x,
+            wind_moment_x_nm=self.rounding.apply(
+                load_center_height_m * wind_y,
+                CalculationValueType.MOMENT,
+            ),
+            wind_moment_y_nm=self.rounding.apply(
+                load_center_height_m * wind_x,
+                CalculationValueType.MOMENT,
+            ),
         )

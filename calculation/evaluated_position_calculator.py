@@ -10,6 +10,7 @@ from math import fsum, hypot
 from .direct_object_calculator import DirectObjectCalculator
 from .overhead_wire_calculator import OverheadWireCalculator
 from .pole_calculator import PoleCalculator
+from .rounding import CalculationValueType, rounding_profile_for
 from .result import (
     BendingStrengthResult,
     EvaluatedPositionDirectionalResult,
@@ -20,8 +21,9 @@ from .result import (
 class EvaluatedPositionCalculator:
     """Combine Pole, Direct Object, and OHW results at one position.
 
-    Eight directions are always calculated. ``EvaluatedPositionResult`` exposes
-    direction ``N`` as ``report_result`` for the confirmed omni report case.
+    The directions supplied by the wind condition are calculated. The legacy
+    condition supplies eight directions; standard-object workflows may supply
+    a single ``OMNI`` direction.
     """
 
     def __init__(
@@ -50,6 +52,9 @@ class EvaluatedPositionCalculator:
         self.pole_calculator = pole_calculator
         self.direct_object_calculator = direct_object_calculator
         self.overhead_wire_calculator = overhead_wire_calculator
+        self.rounding = rounding_profile_for(
+            pole_calculator.wind_condition.design_standard
+        )
 
     def calculate_at(self, evaluated_position_m: float) -> EvaluatedPositionResult:
         """Return load totals and bending checks for all eight directions."""
@@ -77,21 +82,30 @@ class EvaluatedPositionCalculator:
         section_properties = evaluated_pole_result.section_properties
         allowable_stress = evaluated_pole.material.short_term_allowable_bending
 
-        total_fix_load = fsum((
-            pole.total_fix_load_n,
-            0.0 if direct is None else direct.total_fix_load_n,
-            0.0 if wire is None else wire.total_fix_load_n,
-        ))
-        total_seismic_load = fsum((
-            pole.total_seismic_load_n,
-            0.0 if direct is None else direct.total_seismic_load_n,
-            0.0 if wire is None else wire.total_seismic_load_n,
-        ))
-        total_seismic_moment = fsum((
-            pole.total_seismic_moment_nm,
-            0.0 if direct is None else direct.total_seismic_moment_nm,
-            0.0 if wire is None else wire.total_seismic_moment_nm,
-        ))
+        total_fix_load = self.rounding.apply(
+            fsum((
+                pole.total_fix_load_n,
+                0.0 if direct is None else direct.total_fix_load_n,
+                0.0 if wire is None else wire.total_fix_load_n,
+            )),
+            CalculationValueType.LOAD,
+        )
+        total_seismic_load = self.rounding.apply(
+            fsum((
+                pole.total_seismic_load_n,
+                0.0 if direct is None else direct.total_seismic_load_n,
+                0.0 if wire is None else wire.total_seismic_load_n,
+            )),
+            CalculationValueType.LOAD,
+        )
+        total_seismic_moment = self.rounding.apply(
+            fsum((
+                pole.total_seismic_moment_nm,
+                0.0 if direct is None else direct.total_seismic_moment_nm,
+                0.0 if wire is None else wire.total_seismic_moment_nm,
+            )),
+            CalculationValueType.MOMENT,
+        )
 
         pole_by_direction = {
             item.direction: item for item in pole.directional_totals
@@ -134,6 +148,9 @@ class EvaluatedPositionCalculator:
             total_seismic_load_n=total_seismic_load,
             total_seismic_moment_nm=total_seismic_moment,
             directional_results=directional_results,
+            report_direction=(
+                self.pole_calculator.wind_condition.directions[0].name
+            ),
         )
 
     def _pole_by_name(self, pole_name: str):
@@ -143,9 +160,8 @@ class EvaluatedPositionCalculator:
             if pole.name == pole_name
         )
 
-    @classmethod
     def _directional_result(
-        cls,
+        self,
         *,
         direction,
         angle_rad,
@@ -158,52 +174,83 @@ class EvaluatedPositionCalculator:
         section_modulus_cm3,
         allowable_stress_n_mm2,
     ) -> EvaluatedPositionDirectionalResult:
-        wind_load = fsum((
-            pole.total_wind_load_n,
-            0.0 if direct is None else direct.total_wind_load_n,
-            0.0 if wire is None else wire.total_wind_load_n,
-        ))
-        wind_x = fsum((
-            pole.total_wind_load_x_n,
-            0.0 if direct is None else direct.total_wind_load_x_n,
-            0.0 if wire is None else wire.total_wind_load_x_n,
-        ))
-        wind_y = fsum((
-            pole.total_wind_load_y_n,
-            0.0 if direct is None else direct.total_wind_load_y_n,
-            0.0 if wire is None else wire.total_wind_load_y_n,
-        ))
+        wind_load = self.rounding.apply(
+            fsum((
+                pole.total_wind_load_n,
+                0.0 if direct is None else direct.total_wind_load_n,
+                0.0 if wire is None else wire.total_wind_load_n,
+            )),
+            CalculationValueType.LOAD,
+        )
+        wind_x = self.rounding.apply(
+            fsum((
+                pole.total_wind_load_x_n,
+                0.0 if direct is None else direct.total_wind_load_x_n,
+                0.0 if wire is None else wire.total_wind_load_x_n,
+            )),
+            CalculationValueType.LOAD,
+        )
+        wind_y = self.rounding.apply(
+            fsum((
+                pole.total_wind_load_y_n,
+                0.0 if direct is None else direct.total_wind_load_y_n,
+                0.0 if wire is None else wire.total_wind_load_y_n,
+            )),
+            CalculationValueType.LOAD,
+        )
         tension_x = 0.0 if wire is None else wire.total_wind_tension_x_n
         tension_y = 0.0 if wire is None else wire.total_wind_tension_y_n
-        resultant_x = wind_x + tension_x
-        resultant_y = wind_y + tension_y
+        resultant_x = self.rounding.apply(
+            wind_x + tension_x,
+            CalculationValueType.LOAD,
+        )
+        resultant_y = self.rounding.apply(
+            wind_y + tension_y,
+            CalculationValueType.LOAD,
+        )
 
-        wind_moment_x = fsum((
-            pole.total_wind_moment_x_nm,
-            0.0 if direct is None else direct.total_wind_moment_x_nm,
-            0.0 if wire is None else wire.total_wind_moment_x_nm,
-        ))
-        wind_moment_y = fsum((
-            pole.total_wind_moment_y_nm,
-            0.0 if direct is None else direct.total_wind_moment_y_nm,
-            0.0 if wire is None else wire.total_wind_moment_y_nm,
-        ))
+        wind_moment_x = self.rounding.apply(
+            fsum((
+                pole.total_wind_moment_x_nm,
+                0.0 if direct is None else direct.total_wind_moment_x_nm,
+                0.0 if wire is None else wire.total_wind_moment_x_nm,
+            )),
+            CalculationValueType.MOMENT,
+        )
+        wind_moment_y = self.rounding.apply(
+            fsum((
+                pole.total_wind_moment_y_nm,
+                0.0 if direct is None else direct.total_wind_moment_y_nm,
+                0.0 if wire is None else wire.total_wind_moment_y_nm,
+            )),
+            CalculationValueType.MOMENT,
+        )
         tension_moment_x = (
             0.0 if wire is None else wire.total_wind_tension_moment_x_nm
         )
         tension_moment_y = (
             0.0 if wire is None else wire.total_wind_tension_moment_y_nm
         )
-        combined_moment_x = wind_moment_x + tension_moment_x
-        combined_moment_y = wind_moment_y + tension_moment_y
-        combined_wind_moment = hypot(combined_moment_x, combined_moment_y)
+        combined_moment_x = self.rounding.apply(
+            wind_moment_x + tension_moment_x,
+            CalculationValueType.MOMENT,
+        )
+        combined_moment_y = self.rounding.apply(
+            wind_moment_y + tension_moment_y,
+            CalculationValueType.MOMENT,
+        )
+        combined_wind_moment = self.rounding.apply(
+            hypot(combined_moment_x, combined_moment_y),
+            CalculationValueType.MOMENT,
+        )
 
         seismic_tension_moment = (
             0.0 if wire is None else abs(wire.total_seismic_tension_moment_nm)
         )
         seismic_tension_load = abs(total_seismic_tension_n)
-        combined_seismic_moment = (
-            total_seismic_moment_nm + seismic_tension_moment
+        combined_seismic_moment = self.rounding.apply(
+            total_seismic_moment_nm + seismic_tension_moment,
+            CalculationValueType.MOMENT,
         )
 
         return EvaluatedPositionDirectionalResult(
@@ -215,7 +262,10 @@ class EvaluatedPositionCalculator:
             total_wind_tension_n=0.0 if wire is None else wire.total_wind_tension_n,
             resultant_wind_load_x_n=resultant_x,
             resultant_wind_load_y_n=resultant_y,
-            resultant_wind_load_n=hypot(resultant_x, resultant_y),
+            resultant_wind_load_n=self.rounding.apply(
+                hypot(resultant_x, resultant_y),
+                CalculationValueType.LOAD,
+            ),
             total_wind_moment_x_nm=wind_moment_x,
             total_wind_moment_y_nm=wind_moment_y,
             total_wind_tension_moment_x_nm=tension_moment_x,
@@ -223,24 +273,25 @@ class EvaluatedPositionCalculator:
             combined_wind_moment_x_nm=combined_moment_x,
             combined_wind_moment_y_nm=combined_moment_y,
             combined_wind_moment_nm=combined_wind_moment,
-            wind_strength=cls._strength_result(
+            wind_strength=self._strength_result(
                 combined_wind_moment,
                 section_modulus_cm3,
                 allowable_stress_n_mm2,
             ),
-            resultant_seismic_load_n=(
-                total_seismic_load_n + seismic_tension_load
+            resultant_seismic_load_n=self.rounding.apply(
+                total_seismic_load_n + seismic_tension_load,
+                CalculationValueType.LOAD,
             ),
             combined_seismic_moment_nm=combined_seismic_moment,
-            seismic_strength=cls._strength_result(
+            seismic_strength=self._strength_result(
                 combined_seismic_moment,
                 section_modulus_cm3,
                 allowable_stress_n_mm2,
             ),
         )
 
-    @staticmethod
     def _strength_result(
+        self,
         bending_moment_nm: float,
         section_modulus_cm3: float,
         allowable_stress_n_mm2: float,
@@ -252,8 +303,14 @@ class EvaluatedPositionCalculator:
 
         # Nm / cm3 is numerically equal to N/mm2 after both x1000
         # conversions used by Section_each.cls.
-        stress = bending_moment_nm / section_modulus_cm3
-        utilization = stress / allowable_stress_n_mm2
+        stress = self.rounding.apply(
+            bending_moment_nm / section_modulus_cm3,
+            CalculationValueType.STRESS,
+        )
+        utilization = self.rounding.apply(
+            stress / allowable_stress_n_mm2,
+            CalculationValueType.SAFETY_FACTOR,
+        )
         return BendingStrengthResult(
             bending_moment_nm=bending_moment_nm,
             section_modulus_cm3=section_modulus_cm3,

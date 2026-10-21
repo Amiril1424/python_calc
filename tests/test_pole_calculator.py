@@ -4,6 +4,7 @@ import unittest
 
 from calculation.pole_assembly import PoleAssembly
 from calculation.pole_calculator import PoleCalculator
+from calculation.rounding import CalculationValueType
 from domain.conditions import SeismicCondition, WindCondition
 from domain.loads import OverdesignFactor
 from domain.pole import PoleObject
@@ -35,8 +36,20 @@ class PoleCalculatorTests(unittest.TestCase):
         self.assertEqual(result.cf, 0.7)
         self.assertEqual(result.wind_pressure_n_m2, 2214.0)
         self.assertEqual(result.projected_area_m2, 0.8)
-        self.assertEqual(result.seismic_load_n, result.fix_load_n * 0.5)
-        self.assertEqual(result.wind_moment_nm, result.wind_load_n * 2)
+        self.assertEqual(
+            result.seismic_load_n,
+            self.calculator.rounding.apply(
+                result.fix_load_n * 0.5,
+                CalculationValueType.LOAD,
+            ),
+        )
+        self.assertEqual(
+            result.wind_moment_nm,
+            self.calculator.rounding.apply(
+                result.wind_load_n * 2,
+                CalculationValueType.MOMENT,
+            ),
+        )
         self.assertEqual(len(result.directional_results), 8)
         self.assertEqual(result.overdesign_factor, 1.0)
 
@@ -52,13 +65,24 @@ class PoleCalculatorTests(unittest.TestCase):
         amplified_result = amplified_calculator.calculate_one(self.pole, 0)
 
         self.assertEqual(amplified_result.overdesign_factor, 1.2)
-        self.assertAlmostEqual(
+        self.assertEqual(
             amplified_result.fix_load_n,
-            base_result.fix_load_n * 1.2,
+            amplified_calculator.rounding.apply(
+                self.pole.fix_load_n(
+                    active_length_m=4,
+                    diameter_at_active_bottom_mm=200,
+                    diameter_at_active_top_mm=200,
+                    overdesign_factor=OverdesignFactor(1.2),
+                ),
+                CalculationValueType.LOAD,
+            ),
         )
-        self.assertAlmostEqual(
+        self.assertEqual(
             amplified_result.seismic_load_n,
-            base_result.seismic_load_n * 1.2,
+            amplified_calculator.rounding.apply(
+                amplified_result.fix_load_n * 0.5,
+                CalculationValueType.LOAD,
+            ),
         )
 
     def test_signed_xy_components_follow_vba(self):
