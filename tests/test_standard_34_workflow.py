@@ -8,6 +8,7 @@ from calculation.result import Standard34CalculationResult
 from calculation.standard_34_workflow import Standard34CalculationWorkflow
 from domain.loads import OverdesignFactor
 from domain.standards import DesignStandardFactory
+from domain.arm import Arm, ArmAssembly, ArmLoadObject, ArmPart
 from tests.regression_scenarios import (
     _direct_objects,
     _overhead_wires,
@@ -31,7 +32,60 @@ def workflow_for(code: int, *, include_oblique_wind: bool = False):
     )
 
 
+def arm_assembly():
+    arm = Arm(
+        name="Lighting arm",
+        diameter_mm=114.3,
+        thickness_mm=3.5,
+        total_length_m=1.0,
+        exposed_length_m=0.9,
+        installation_height_m=5.0,
+        material="STK400",
+    )
+    light = ArmLoadObject(
+        name="Light",
+        object_type="Directional",
+        front_area_m2=0.266,
+        side_area_m2=0.226,
+        mass_per_unit_kg=20,
+        horizontal_load_distance_m=0.9,
+        base_wind_coefficient=1.0,
+    )
+    return ArmAssembly((ArmPart(arm, (light,)),))
+
+
 class Standard34WorkflowTests(unittest.TestCase):
+    def test_standard_three_adds_arm_to_load_moment_and_stress(self):
+        standard = DesignStandardFactory.create(3, structure_height_m=8.15)
+        without_arm = workflow_for(3).calculate_at(0.0)
+        with_arm = Standard34CalculationWorkflow(
+            design_standard=standard,
+            pole_assembly=PoleAssembly(_poles()),
+            direct_objects=_direct_objects(),
+            overhead_wires=_overhead_wires(),
+            arm_assembly=arm_assembly(),
+        ).calculate_at(0.0)
+
+        self.assertIsNotNone(with_arm.arm_aggregation)
+        self.assertGreater(with_arm.total_fix_load_n, without_arm.total_fix_load_n)
+        self.assertGreater(
+            with_arm.direction_results[0].combined_wind_moment_nm,
+            without_arm.direction_results[0].combined_wind_moment_nm,
+        )
+        self.assertGreater(
+            with_arm.direction_results[0].bending_stress.bending_stress_n_mm2,
+            without_arm.direction_results[0].bending_stress.bending_stress_n_mm2,
+        )
+
+    def test_standard_four_rejects_nonempty_arm_assembly(self):
+        standard = DesignStandardFactory.create(4, structure_height_m=8.15)
+        with self.assertRaisesRegex(ValueError, "does not use Arm"):
+            Standard34CalculationWorkflow(
+                design_standard=standard,
+                pole_assembly=PoleAssembly(_poles()),
+                arm_assembly=arm_assembly(),
+            )
+
     def test_default_calculation_contains_straight_only(self):
         for code in (3, 4):
             with self.subTest(code=code):

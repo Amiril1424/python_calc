@@ -1,12 +1,12 @@
-"""Ordinary decimal-place rounding used by non-New-JIL standards."""
+"""Excel-compatible decimal-place rounding for non-New-JIL standards."""
 
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 
 from .base import RoundingPolicy
 
 
 class DecimalRoundingPolicy(RoundingPolicy):
-    """Round using decimal places, preserving the engine's Python behaviour."""
+    """Round decimal places like Excel ``ROUND`` (half away from zero)."""
 
     def apply(
         self,
@@ -22,7 +22,21 @@ class DecimalRoundingPolicy(RoundingPolicy):
             raise TypeError("Value must be a real number, not bool")
 
         try:
-            rounded_value = round(value, precision)
-        except (TypeError, ValueError):
+            # Excel calculates numeric values with at most 15 significant
+            # decimal digits. Normalizing Python floats to that precision
+            # removes binary representation noise such as
+            # 0.175 * 0.1 -> 0.017499999999999998 before applying ROUND.
+            if isinstance(value, Decimal):
+                decimal_value = value
+            elif isinstance(value, int):
+                decimal_value = Decimal(value)
+            else:
+                decimal_value = Decimal(format(float(value), ".15g"))
+            quantum = Decimal(1).scaleb(-precision)
+            rounded_value = decimal_value.quantize(
+                quantum,
+                rounding=ROUND_HALF_UP,
+            )
+        except (InvalidOperation, TypeError, ValueError):
             raise TypeError("Value must be a real number") from None
         return float(rounded_value)

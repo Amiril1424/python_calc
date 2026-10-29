@@ -5,9 +5,17 @@ from collections.abc import Iterable
 from calculation.result import (
     Standard126CalculationResult,
     Standard34CalculationResult,
+    Standard5CalculationResult,
+    Standard7CalculationResult,
+    Standard9CalculationResult,
 )
 from calculation.standard_126_workflow import Standard126CalculationWorkflow
 from calculation.standard_34_workflow import Standard34CalculationWorkflow
+from calculation.standard_arm_workflows import (
+    Standard5CalculationWorkflow,
+    Standard7CalculationWorkflow,
+    Standard9CalculationWorkflow,
+)
 
 
 class CalculationService:
@@ -15,11 +23,23 @@ class CalculationService:
 
     def __init__(
         self,
-        workflow: Standard126CalculationWorkflow | Standard34CalculationWorkflow,
+        workflow: (
+            Standard126CalculationWorkflow
+            | Standard34CalculationWorkflow
+            | Standard5CalculationWorkflow
+            | Standard7CalculationWorkflow
+            | Standard9CalculationWorkflow
+        ),
     ) -> None:
         if not isinstance(
             workflow,
-            (Standard126CalculationWorkflow, Standard34CalculationWorkflow),
+            (
+                Standard126CalculationWorkflow,
+                Standard34CalculationWorkflow,
+                Standard5CalculationWorkflow,
+                Standard7CalculationWorkflow,
+                Standard9CalculationWorkflow,
+            ),
         ):
             raise TypeError(
                 "workflow must be a supported standard calculation workflow"
@@ -30,7 +50,11 @@ class CalculationService:
         self,
         evaluated_positions_m: Iterable[float],
     ) -> tuple[
-        Standard126CalculationResult | Standard34CalculationResult,
+        Standard126CalculationResult
+        | Standard34CalculationResult
+        | Standard5CalculationResult
+        | Standard7CalculationResult
+        | Standard9CalculationResult,
         ...,
     ]:
         """Calculate each requested EvaluatedPosition in supplied order."""

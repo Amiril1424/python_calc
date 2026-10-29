@@ -112,7 +112,7 @@ class CompressionBendingStressPolicyTests(unittest.TestCase):
         self.assertEqual(result.total_utilization_ratio, 3.231)
         self.assertEqual(result.status, "N.G")
 
-    def test_intermediate_rounding_uses_python_tie_to_even(self):
+    def test_intermediate_rounding_uses_excel_half_away_from_zero(self):
         result = self.policy.calculate(
             stress_input(
                 active_pole_segment_lengths_m=(0.01125,),
@@ -120,8 +120,8 @@ class CompressionBendingStressPolicyTests(unittest.TestCase):
             )
         )
 
-        # Lk = 0.01125 * 2 * 100 = 2.25 cm; round(2.25, 1) = 2.2.
-        self.assertEqual(result.slenderness_ratio_lambda, 2.2)
+        # Lk = 0.01125 * 2 * 100 = 2.25 cm; Excel ROUND gives 2.3.
+        self.assertEqual(result.slenderness_ratio_lambda, 2.3)
 
     def test_result_is_immutable(self):
         result = self.policy.calculate(stress_input())

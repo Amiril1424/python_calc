@@ -27,6 +27,18 @@ class DecimalRoundingPolicyTests(unittest.TestCase):
     def test_accepts_decimal_value(self):
         self.assertEqual(self.policy(Decimal("12.3456"), 3), 12.346)
 
+    def test_exact_half_matches_excel_round_away_from_zero(self):
+        self.assertEqual(self.policy(1.25, 1), 1.3)
+        self.assertEqual(self.policy(1.35, 1), 1.4)
+        self.assertEqual(self.policy(-1.25, 1), -1.3)
+        self.assertEqual(self.policy(-1.35, 1), -1.4)
+        self.assertEqual(self.policy(0.0175, 3), 0.018)
+        self.assertEqual(self.policy(0.0575, 3), 0.058)
+
+    def test_formula_float_noise_matches_excel_fifteen_digit_precision(self):
+        self.assertEqual(self.policy(0.175 * 0.1, 3), 0.018)
+        self.assertEqual(self.policy(0.0115 * 5, 3), 0.058)
+
     def test_rejects_invalid_decimal_precision(self):
         for precision in (-1, 2.5, True):
             with self.subTest(precision=precision):

@@ -4,12 +4,14 @@ from collections.abc import Iterable
 from math import fsum, hypot, radians
 
 from domain.conditions import SeismicCondition
+from domain.arm import ArmAssembly
 from domain.direct_object import DirectObject
 from domain.loads import OverdesignFactor
 from domain.overhead_wire import OverheadWire
 from domain.standards import DesignStandard, DesignStandardCode
 
 from .direct_object_calculator import DirectObjectCalculator
+from .arm_calculator import ArmAssemblyCalculator
 from .overhead_wire_calculator import OverheadWireCalculator
 from .pole_assembly import PoleAssembly
 from .pole_calculator import PoleCalculator
@@ -35,6 +37,7 @@ class Standard34CalculationWorkflow:
         pole_assembly: PoleAssembly,
         direct_objects: Iterable[DirectObject] = (),
         overhead_wires: Iterable[OverheadWire] = (),
+        arm_assembly: ArmAssembly | None = None,
         overdesign_factor: OverdesignFactor | None = None,
     ) -> None:
         if not isinstance(design_standard, DesignStandard):
@@ -48,6 +51,12 @@ class Standard34CalculationWorkflow:
             )
         if not isinstance(design_standard.stress_policy, SimpleBendingStressPolicy):
             raise TypeError("d_st 3 and 4 require SimpleBendingStressPolicy")
+        if (
+            design_standard.code is DesignStandardCode.SMALL_SIGN_BOARD
+            and arm_assembly is not None
+            and arm_assembly.arm_parts
+        ):
+            raise ValueError("d_st = 4 does not use Arm calculation")
 
         self.design_standard = design_standard
         self.wind_condition = _StandardWindCondition(design_standard)
@@ -77,6 +86,11 @@ class Standard34CalculationWorkflow:
             seismic_policy=no_seismic,
             calculate_seismic_tension=False,
         )
+        self.arm_assembly_calculator = (
+            ArmAssemblyCalculator(arm_assembly, design_standard)
+            if arm_assembly is not None
+            else None
+        )
 
     def calculate_at(self, evaluated_position_m: float) -> Standard34CalculationResult:
         pole = self.pole_calculator.aggregate_at(evaluated_position_m)
@@ -86,6 +100,11 @@ class Standard34CalculationWorkflow:
             )
         direct = self.direct_object_calculator.aggregate_at(evaluated_position_m)
         wire = self.overhead_wire_calculator.aggregate_at(evaluated_position_m)
+        arm = (
+            self.arm_assembly_calculator.aggregate_at(evaluated_position_m)
+            if self.arm_assembly_calculator is not None
+            else None
+        )
         evaluated_pole_result = pole.pole_results[0]
         evaluated_pole = next(
             item
@@ -98,6 +117,7 @@ class Standard34CalculationWorkflow:
                 pole.total_fix_load_n,
                 direct.total_fix_load_n,
                 wire.total_fix_load_n,
+                0.0 if arm is None else arm.total_fix_load_n,
             )),
             CalculationValueType.LOAD,
         )
@@ -111,6 +131,11 @@ class Standard34CalculationWorkflow:
         wire_by_direction = {
             item.direction: item for item in wire.directional_totals
         }
+        arm_by_direction = (
+            {item.direction: item for item in arm.directional_totals}
+            if arm is not None
+            else {}
+        )
         direction_results = tuple(
             self._direction_result(
                 name=case.name,
@@ -118,6 +143,7 @@ class Standard34CalculationWorkflow:
                 pole=pole_by_direction[case.name],
                 direct=direct_by_direction[case.name],
                 wire=wire_by_direction[case.name],
+                arm=arm_by_direction.get(case.name),
                 section_modulus_cm3=section_properties.section_modulus_cm3,
                 allowable_bending_n_mm2=(
                     evaluated_pole.material.short_term_allowable_bending
@@ -137,6 +163,7 @@ class Standard34CalculationWorkflow:
             direct_object_aggregation=direct,
             overhead_wire_aggregation=wire,
             direction_results=direction_results,
+            arm_aggregation=arm,
         )
 
     def _direction_result(
@@ -147,6 +174,7 @@ class Standard34CalculationWorkflow:
         pole,
         direct,
         wire,
+        arm,
         section_modulus_cm3,
         allowable_bending_n_mm2,
     ) -> Standard34DirectionResult:
@@ -155,6 +183,7 @@ class Standard34CalculationWorkflow:
                 pole.total_wind_load_n,
                 direct.total_wind_load_n,
                 wire.total_wind_load_n,
+                0.0 if arm is None else arm.total_wind_load_n,
             )),
             CalculationValueType.LOAD,
         )
@@ -163,6 +192,7 @@ class Standard34CalculationWorkflow:
                 pole.total_wind_load_x_n,
                 direct.total_wind_load_x_n,
                 wire.total_wind_load_x_n,
+                0.0 if arm is None else arm.total_wind_load_x_n,
             )),
             CalculationValueType.LOAD,
         )
@@ -171,6 +201,7 @@ class Standard34CalculationWorkflow:
                 pole.total_wind_load_y_n,
                 direct.total_wind_load_y_n,
                 wire.total_wind_load_y_n,
+                0.0 if arm is None else arm.total_wind_load_y_n,
             )),
             CalculationValueType.LOAD,
         )
@@ -187,6 +218,7 @@ class Standard34CalculationWorkflow:
                 pole.total_wind_moment_x_nm,
                 direct.total_wind_moment_x_nm,
                 wire.total_wind_moment_x_nm,
+                0.0 if arm is None else arm.total_wind_moment_x_nm,
             )),
             CalculationValueType.MOMENT,
         )
@@ -195,15 +227,20 @@ class Standard34CalculationWorkflow:
                 pole.total_wind_moment_y_nm,
                 direct.total_wind_moment_y_nm,
                 wire.total_wind_moment_y_nm,
+                0.0 if arm is None else arm.total_wind_moment_y_nm,
             )),
             CalculationValueType.MOMENT,
         )
         combined_x = self.rounding.apply(
-            wind_moment_x + wire.total_wind_tension_moment_x_nm,
+            wind_moment_x
+            + wire.total_wind_tension_moment_x_nm
+            + (0.0 if arm is None else arm.total_fix_load_moment_x_nm),
             CalculationValueType.MOMENT,
         )
         combined_y = self.rounding.apply(
-            wind_moment_y + wire.total_wind_tension_moment_y_nm,
+            wind_moment_y
+            + wire.total_wind_tension_moment_y_nm
+            + (0.0 if arm is None else arm.total_fix_load_moment_y_nm),
             CalculationValueType.MOMENT,
         )
         combined_moment = self.rounding.apply(

@@ -43,7 +43,10 @@ class DesignStandardFeatureTests(unittest.TestCase):
                 self.assertFalse(features.calculates_seismic_by_default)
                 self.assertTrue(features.supports_optional_seismic)
                 self.assertTrue(features.supports_oblique_wind)
-                self.assertFalse(features.includes_arm_safety_check)
+                self.assertEqual(
+                    features.includes_arm_safety_check,
+                    code is DesignStandardCode.OLD_LIGHTING_POLE,
+                )
 
     def test_standard_five_includes_large_sign_and_arm_features(self):
         features = calculation_features_for(

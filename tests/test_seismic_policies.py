@@ -213,7 +213,7 @@ class CalculatorSeismicPolicyTests(unittest.TestCase):
         result = calculator.calculate_one(wire, 0)
         self.assertEqual(result.total_mass_kg, 10.0)
         self.assertEqual(result.fix_load_n, 98.1)
-        self.assertEqual(result.seismic_load_n, 49.0)
+        self.assertEqual(result.seismic_load_n, 49.1)
 
     def test_disabled_standard_returns_zero_seismic_results(self):
         direct_object = DirectObject(

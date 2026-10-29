@@ -197,6 +197,51 @@ class PoleObject(LoadObject):
 
         return mass
 
+    def raw_mass_per_meter_kg(
+        self,
+        diameter_at_active_bottom_mm: float,
+        diameter_at_active_top_mm: float,
+    ) -> float:
+        """Return unrounded average mass per metre of the active pole."""
+        if diameter_at_active_bottom_mm <= 0 or diameter_at_active_top_mm <= 0:
+            raise ValueError("Active pole diameters must be greater than zero")
+
+        if not self.is_tapered:
+            outer_area_mm2 = BasicFunction.PI / 4 * (
+                self.diameter_lower_mm**2
+                - (self.diameter_lower_mm - 2 * self.thickness_lower_mm) ** 2
+            )
+        else:
+            outer_mid = (
+                diameter_at_active_bottom_mm + diameter_at_active_top_mm
+            ) / 2
+            inner_bottom = (
+                diameter_at_active_bottom_mm - 2 * self.thickness_lower_mm
+            )
+            inner_top = (
+                diameter_at_active_top_mm - 2 * self.thickness_upper_mm
+            )
+            inner_mid = (inner_bottom + inner_top) / 2
+            outer_area_mm2 = BasicFunction.PI / 4 * (
+                outer_mid**2 - inner_mid**2
+            )
+
+        return outer_area_mm2 / 1_000_000 * BasicFunction.DENSITY
+
+    def raw_mass_kg(
+        self,
+        active_length_m: float,
+        diameter_at_active_bottom_mm: float,
+        diameter_at_active_top_mm: float,
+    ) -> float:
+        """Return pole mass before any decimal or significant-figure rounding."""
+        if active_length_m < 0:
+            raise ValueError("active_length_m cannot be negative")
+        return self.raw_mass_per_meter_kg(
+            diameter_at_active_bottom_mm,
+            diameter_at_active_top_mm,
+        ) * active_length_m
+
     def fix_load_n(
         self,
         active_length_m: float,
@@ -234,8 +279,8 @@ class PoleObject(LoadObject):
         Standards 1 and 6 use the pole HpB ratio. Standards 2 through 5
         use the fixed value 0.7, following ``Pole_each.Calc_Cf`` in VBA.
         """
-        if design_standard not in {1, 2, 3, 4, 5, 6}:
-            raise ValueError("Design standard must be between 1 and 6")
+        if design_standard not in {1, 2, 3, 4, 5, 6, 7, 9}:
+            raise ValueError("Design standard must be one of 1-7 or 9")
         if design_standard not in {1, 6}:
             return 0.7
 

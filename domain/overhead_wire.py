@@ -78,12 +78,22 @@ class OverheadWire(LoadObject):
     def total_mass_kg(self) -> float:
         return self.mass_per_length_kg_m * self.tributary_wire_length_m()
 
-    def fix_load_per_length_n_m(self) -> float:
-        return self.force_from_mass(self.mass_per_length_kg_m)
+    def fix_load_per_length_n_m(
+        self,
+        gravity_m_s2: float = LoadObject.GRAVITY,
+    ) -> float:
+        if gravity_m_s2 <= 0:
+            raise ValueError("gravity_m_s2 must be greater than zero")
+        return self.mass_per_length_kg_m * gravity_m_s2
 
-    def fix_load_n(self) -> float:
+    def fix_load_n(
+        self,
+        gravity_m_s2: float = LoadObject.GRAVITY,
+    ) -> float:
         """Return OHW FixLoad without a Pole OverdesignFactor."""
-        return self.force_from_mass(self.total_mass_kg())
+        if gravity_m_s2 <= 0:
+            raise ValueError("gravity_m_s2 must be greater than zero")
+        return self.total_mass_kg() * gravity_m_s2
 
     def load_center_height_m(self, evaluated_position_m: float) -> float:
         height = self.elevation_m - float(evaluated_position_m)
@@ -111,8 +121,8 @@ class OverheadWire(LoadObject):
         design_standard: int,
         kz: float = 1.0,
     ) -> float:
-        if design_standard not in {1, 2, 3, 4, 5, 6}:
-            raise ValueError("Design standard must be between 1 and 6")
+        if design_standard not in {1, 2, 3, 4, 5, 6, 7, 9}:
+            raise ValueError("Design standard must be one of 1-7 or 9")
         coefficient = (
             self.base_wind_coefficient * kz
             if design_standard == 1

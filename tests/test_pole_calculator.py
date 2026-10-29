@@ -53,6 +53,63 @@ class PoleCalculatorTests(unittest.TestCase):
         self.assertEqual(len(result.directional_results), 8)
         self.assertEqual(result.overdesign_factor, 1.0)
 
+    def test_act_straight_pole_rounds_unit_weight_before_length(self):
+        pole = PoleObject(
+            name="PDF Pole-1",
+            pole_type="Straight",
+            diameter_lower_mm=165.2,
+            diameter_upper_mm=165.2,
+            thickness_lower_mm=4.5,
+            thickness_upper_mm=4.5,
+            material="STK400",
+            top_elevation_m=14.84,
+        )
+        calculator = PoleCalculator(
+            assembly=PoleAssembly([pole]),
+            wind_condition=WindCondition(
+                1,
+                14.84,
+                area_density_code=2,
+                basic_wind_speed_m_s=34,
+            ),
+            seismic_condition=SeismicCondition.ground(0.5),
+        )
+
+        result = calculator.calculate_one(pole, 9.69)
+
+        self.assertEqual(result.fix_load_n, 900.7)
+        self.assertEqual(result.wind_pressure_n_m2, 1683.4)
+        self.assertEqual(result.wind_load_n, 1289.3)
+
+    def test_decimal_taper_rounds_mass_to_one_decimal_before_gravity(self):
+        pole = PoleObject(
+            name="Taper",
+            pole_type="Taper",
+            diameter_lower_mm=300,
+            diameter_upper_mm=200,
+            thickness_lower_mm=6,
+            thickness_upper_mm=4,
+            material="STK400",
+            top_elevation_m=10,
+        )
+        calculator = PoleCalculator(
+            assembly=PoleAssembly([pole]),
+            wind_condition=WindCondition(2, 10),
+            seismic_condition=SeismicCondition.ground(0.5),
+        )
+
+        result = calculator.calculate_one(pole, 0)
+
+        expected_mass = round(pole.raw_mass_kg(10, 300, 200), 1)
+        self.assertEqual(result.mass_kg, expected_mass)
+        self.assertEqual(
+            result.fix_load_n,
+            calculator.rounding.apply(
+                expected_mass * 9.80665,
+                CalculationValueType.LOAD,
+            ),
+        )
+
     def test_overdesign_factor_affects_fixload_and_seismic_load(self):
         base_result = self.calculator.calculate_one(self.pole, 0)
         amplified_calculator = PoleCalculator(

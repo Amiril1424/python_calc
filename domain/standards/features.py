@@ -62,7 +62,7 @@ _FEATURES_BY_STANDARD: dict[DesignStandardCode, CalculationFeatures] = {
         calculates_seismic_by_default=False,
         supports_optional_seismic=True,
         supports_oblique_wind=True,
-        includes_arm_safety_check=False,
+        includes_arm_safety_check=True,
     ),
     DesignStandardCode.SMALL_SIGN_BOARD: CalculationFeatures(
         wind_case_mode=WindCaseMode.STRAIGHT,

@@ -3,6 +3,7 @@
 from dataclasses import replace
 from math import cos, pi, sin
 from math import fsum
+from decimal import Decimal, ROUND_HALF_UP
 
 from .pole_assembly import PoleAssembly
 from .result import (
@@ -16,6 +17,8 @@ from domain.loads import OverdesignFactor
 from domain.pole import PoleObject
 from .rounding import CalculationValueType, rounding_profile_for
 from .seismic import SeismicPolicy, seismic_policy_for
+from .gravity import gravity_for_standard
+from domain.standards import DesignStandardCode
 
 
 class PoleCalculator:
@@ -35,6 +38,9 @@ class PoleCalculator:
         self.seismic_condition = seismic_condition
         self.overdesign_factor = overdesign_factor or OverdesignFactor()
         self.rounding = rounding_profile_for(wind_condition.design_standard)
+        self.gravity_m_s2 = gravity_for_standard(
+            wind_condition.design_standard
+        )
         self.seismic_policy = seismic_policy or seismic_policy_for(
             wind_condition.design_standard,
             k_value=seismic_condition.k_value,
@@ -97,19 +103,11 @@ class PoleCalculator:
             ),
             CalculationValueType.PROJECTED_AREA,
         )
-        mass = pole.mass_kg(
+        mass, fix_load = self._mass_and_fix_load(
+            pole,
             geometry.active_length_m,
             diameter_bottom,
             diameter_top,
-        )
-        fix_load = self.rounding.apply(
-            pole.fix_load_n(
-                geometry.active_length_m,
-                diameter_bottom,
-                diameter_top,
-                self.overdesign_factor,
-            ),
-            CalculationValueType.LOAD,
         )
         wind_load = self.rounding.apply(
             pole.calculate_wind_load(projected_area, cf, wind_pressure),
@@ -182,6 +180,70 @@ class PoleCalculator:
             seismic_moment_nm=seismic_moment,
             directional_results=directional_results,
         )
+
+    def _mass_and_fix_load(
+        self,
+        pole: PoleObject,
+        active_length_m: float,
+        diameter_bottom_mm: float,
+        diameter_top_mm: float,
+    ) -> tuple[float, float]:
+        """Apply the confirmed standard-specific pole self-weight sequence."""
+        standard = DesignStandardCode(self.wind_condition.design_standard)
+
+        if standard is DesignStandardCode.NEW_JIL:
+            # VBA Pole_each: mass = Fkb_SF(fL_*, 3), then
+            # fld = Fkb_SF(mass * 9.81, 3).
+            mass = self.rounding.apply(
+                pole.mass_kg(
+                    active_length_m,
+                    diameter_bottom_mm,
+                    diameter_top_mm,
+                ),
+                CalculationValueType.WEIGHT_PER_METER,
+            )
+            fix_load = self.rounding.apply(
+                mass * self.gravity_m_s2 * self.overdesign_factor.value,
+                CalculationValueType.LOAD,
+            )
+            return mass, fix_load
+
+        if pole.is_tapered:
+            # Decimal standards: taper mass [kg] is rounded first to 1 decimal.
+            mass = float(
+                Decimal(
+                    str(
+                        pole.raw_mass_kg(
+                            active_length_m,
+                            diameter_bottom_mm,
+                            diameter_top_mm,
+                        )
+                    )
+                ).quantize(Decimal("0.1"), rounding=ROUND_HALF_UP)
+            )
+            fix_load = self.rounding.apply(
+                mass * self.gravity_m_s2 * self.overdesign_factor.value,
+                CalculationValueType.LOAD,
+            )
+            return mass, fix_load
+
+        # Decimal standards, straight pole: weight per metre [N/m] is rounded
+        # to 2 decimals before multiplication by length and overdesign factor.
+        mass_per_meter = pole.raw_mass_per_meter_kg(
+            diameter_bottom_mm,
+            diameter_top_mm,
+        )
+        fix_load_per_meter = self.rounding.apply(
+            mass_per_meter * self.gravity_m_s2,
+            CalculationValueType.WEIGHT_PER_METER,
+        )
+        fix_load = self.rounding.apply(
+            fix_load_per_meter
+            * active_length_m
+            * self.overdesign_factor.value,
+            CalculationValueType.LOAD,
+        )
+        return mass_per_meter * active_length_m, fix_load
 
     def calculate_at(
         self,

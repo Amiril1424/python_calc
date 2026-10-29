@@ -67,9 +67,11 @@ class DirectObject(LoadObject):
         """Return total mass for all units of this Direct Object."""
         return self.mass_per_unit_kg * self.quantity
 
-    def fix_load_n(self) -> float:
+    def fix_load_n(self, gravity_m_s2: float = LoadObject.GRAVITY) -> float:
         """Return FixLoad without a Pole OverdesignFactor."""
-        return self.force_from_mass(self.total_mass_kg())
+        if gravity_m_s2 <= 0:
+            raise ValueError("gravity_m_s2 must be greater than zero")
+        return self.total_mass_kg() * gravity_m_s2
 
     def load_center_height_m(self, evaluated_position_m: float) -> float:
         """Return the load-center height above an EvaluatedPosition."""
@@ -105,8 +107,8 @@ class DirectObject(LoadObject):
         kz: float = 1.0,
     ) -> float:
         """Return CF following ``DO_each.Calc_Cf``."""
-        if design_standard not in {1, 2, 3, 4, 5, 6}:
-            raise ValueError("Design standard must be between 1 and 6")
+        if design_standard not in {1, 2, 3, 4, 5, 6, 7, 9}:
+            raise ValueError("Design standard must be one of 1-7 or 9")
         coefficient = (
             self.base_wind_coefficient * kz
             if design_standard == 1

@@ -40,7 +40,7 @@ class RoundingRule:
 
 ROUNDING_RULES: dict[CalculationValueType, RoundingRule] = {
     CalculationValueType.CALCULATED_POLE_DIAMETER: RoundingRule(1, 4),
-    CalculationValueType.LOAD_CENTER_HEIGHT: RoundingRule(None, 3),
+    CalculationValueType.LOAD_CENTER_HEIGHT: RoundingRule(3, 3),
     CalculationValueType.PROJECTED_AREA: RoundingRule(3, 3),
     CalculationValueType.CROSS_SECTION_AREA: RoundingRule(2, 3),
     CalculationValueType.MOMENT_OF_INERTIA: RoundingRule(2, 3),
@@ -74,7 +74,17 @@ class CalculationRoundingProfile:
 
         rule = ROUNDING_RULES[value_type]
         if isinstance(self.policy, DecimalRoundingPolicy):
-            precision = rule.decimal_places
+            if (
+                value_type is CalculationValueType.WIND_PRESSURE
+                and self.design_standard
+                in {
+                    DesignStandardCode.ACT_DISASTER_PREVENTION,
+                    DesignStandardCode.ACT_TOWER,
+                }
+            ):
+                precision = 1
+            else:
+                precision = rule.decimal_places
         elif isinstance(self.policy, SignificantFigureRoundingPolicy):
             precision = rule.significant_figures
         else:

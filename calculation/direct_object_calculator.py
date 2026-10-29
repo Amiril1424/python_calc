@@ -7,6 +7,7 @@ from domain.conditions import SeismicCondition, WindCondition
 from domain.direct_object import DirectObject
 from .rounding import CalculationValueType, rounding_profile_for
 from .seismic import SeismicPolicy, seismic_policy_for
+from .gravity import gravity_for_standard
 
 from .result import (
     DirectObjectAggregationResult,
@@ -38,6 +39,9 @@ class DirectObjectCalculator:
         self.wind_condition = wind_condition
         self.seismic_condition = seismic_condition
         self.rounding = rounding_profile_for(wind_condition.design_standard)
+        self.gravity_m_s2 = gravity_for_standard(
+            wind_condition.design_standard
+        )
         self.seismic_policy = seismic_policy or seismic_policy_for(
             wind_condition.design_standard,
             k_value=seismic_condition.k_value,
@@ -80,7 +84,7 @@ class DirectObjectCalculator:
             CalculationValueType.WIND_PRESSURE,
         )
         fix_load = self.rounding.apply(
-            direct_object.fix_load_n(),
+            direct_object.fix_load_n(self.gravity_m_s2),
             CalculationValueType.LOAD,
         )
         total_mass = direct_object.total_mass_kg()
